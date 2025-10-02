@@ -1,56 +1,115 @@
-name: Run Newman Tests   # Название workflow (отображается во вкладке Actions)
+# name: Run Newman Tests   # Название workflow (отображается во вкладке Actions)
+
+# on:
+#   schedule:
+#     - cron: '0 3 * * *'  # Автозапуск по расписанию: каждый день в 03:00 UTC
+#   push:
+#     branches: [ main ]   # Запуск при push в ветку main
+#   workflow_dispatch:     # Позволяет запускать вручную через кнопку "Run workflow"
+
+# jobs:
+#   newman:                # Имя задания (может быть любое)
+#     runs-on: ubuntu-latest   # Где выполняется (виртуальная Ubuntu-машина)
+
+#     steps:
+#       - name: Checkout repository
+#         uses: actions/checkout@v4
+#         # Загружает твой репозиторий в workflow, чтобы он "видел" твои файлы
+
+#       - name: Install Node.js
+#         uses: actions/setup-node@v4
+#         with:
+#           node-version: '18'
+#         # Устанавливает Node.js, чтобы можно было запускать Newman
+
+#       - name: Install Newman and reporter
+#         run: |
+#           npm install -g newman
+#           npm install -g newman-reporter-htmlextra
+#         # Устанавливает Newman и репортёр для HTML-отчёта
+
+#       - name: Create reports directory
+#         run: mkdir -p reports
+#         # Создаёт папку reports для сохранения отчёта
+
+#       - name: Run Newman tests (with CLI log)
+#         run: |
+#           newman run collections/Collection.postman_collection.json \
+#           -e environment/dev-env.json \
+#           -r cli,htmlextra \
+#           --reporter-htmlextra-export reports/report.html
+#         continue-on-error: true
+#         # Запускает коллекцию:
+#         # - `collections/createOrder.json` — путь к твоей коллекции
+#         # - `-e environment/Dev-environment.json` — путь к файлу окружения (можно убрать, если не нужен)
+#         # - `-r cli,htmlextra` — лог в терминал + HTML-отчёт
+#         # - `--reporter-htmlextra-export` — путь, куда сохранить HTML
+#         # - `continue-on-error: true` — позволяет сохранить отчёт, даже если есть ошибки
+
+#       - name: Upload HTML report
+#         uses: actions/upload-artifact@v4
+#         with:
+#           name: api-tests
+#           path: reports/report.html
+
+#       - name: Upload Pages artifact
+#         if: always()
+#         uses: actions/upload-pages-artifact@v3
+#         with:
+#           path: reports   # внутри есть index.html
+
+#   deploy:
+#     needs: newman
+#     if: always()
+#     runs-on: ubuntu-latest
+#     environment:
+#       name: github-pages
+#       url: ${{ steps.deployment.outputs.page_url }}
+#     steps:
+#       - name: Deploy to GitHub Pages
+#         id: deployment
+#         uses: actions/deploy-pages@v4
+#         # Загружает HTML-отчёт как артефакт, чтобы ты мог его скачать
+
+name: Run Newman Tests
 
 on:
   schedule:
-    - cron: '0 3 * * *'  # Автозапуск по расписанию: каждый день в 03:00 UTC
+    - cron: '0 3 * * *'
   push:
-    branches: [ main ]   # Запуск при push в ветку main
-  workflow_dispatch:     # Позволяет запускать вручную через кнопку "Run workflow"
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
 
 jobs:
-  newman:                # Имя задания (может быть любое)
-    runs-on: ubuntu-latest   # Где выполняется (виртуальная Ubuntu-машина)
-
+  newman:
+    runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        # Загружает твой репозиторий в workflow, чтобы он "видел" твои файлы
+      - uses: actions/checkout@v4
 
-      - name: Install Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '18'
-        # Устанавливает Node.js, чтобы можно было запускать Newman
 
-      - name: Install Newman and reporter
-        run: |
-          npm install -g newman
-          npm install -g newman-reporter-htmlextra
-        # Устанавливает Newman и репортёр для HTML-отчёта
+      - run: |
+          npm i -g newman newman-reporter-htmlextra
+          mkdir -p reports
 
-      - name: Create reports directory
-        run: mkdir -p reports
-        # Создаёт папку reports для сохранения отчёта
-
-      - name: Run Newman tests (with CLI log)
+      - name: Run Newman tests
         run: |
           newman run collections/Collection.postman_collection.json \
-          -e environment/dev-env.json \
-          -r cli,htmlextra \
-          --reporter-htmlextra-export reports/report.html
+            -e environment/dev-env.json \
+            -r cli,htmlextra \
+            --reporter-htmlextra-export reports/index.html
         continue-on-error: true
-        # Запускает коллекцию:
-        # - `collections/createOrder.json` — путь к твоей коллекции
-        # - `-e environment/Dev-environment.json` — путь к файлу окружения (можно убрать, если не нужен)
-        # - `-r cli,htmlextra` — лог в терминал + HTML-отчёт
-        # - `--reporter-htmlextra-export` — путь, куда сохранить HTML
-        # - `continue-on-error: true` — позволяет сохранить отчёт, даже если есть ошибки
-
-      - name: Upload HTML report
-        uses: actions/upload-artifact@v4
-        with:
-          name: api-tests
-          path: reports/report.html
 
       - name: Upload Pages artifact
         if: always()
@@ -69,4 +128,3 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
-        # Загружает HTML-отчёт как артефакт, чтобы ты мог его скачать
