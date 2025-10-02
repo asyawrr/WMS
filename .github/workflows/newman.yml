@@ -1,0 +1,54 @@
+name: Run Newman Tests   # Название workflow (отображается во вкладке Actions)
+
+on:
+  schedule:
+    - cron: '0 3 * * *'  # Автозапуск по расписанию: каждый день в 03:00 UTC
+  push:
+    branches: [ main ]   # Запуск при push в ветку main
+  workflow_dispatch:     # Позволяет запускать вручную через кнопку "Run workflow"
+
+jobs:
+  newman:                # Имя задания (может быть любое)
+    runs-on: ubuntu-latest   # Где выполняется (виртуальная Ubuntu-машина)
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        # Загружает твой репозиторий в workflow, чтобы он "видел" твои файлы
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+        # Устанавливает Node.js, чтобы можно было запускать Newman
+
+      - name: Install Newman and reporter
+        run: |
+          npm install -g newman
+          npm install -g newman-reporter-htmlextra
+        # Устанавливает Newman и репортёр для HTML-отчёта
+
+      - name: Create reports directory
+        run: mkdir -p reports
+        # Создаёт папку reports для сохранения отчёта
+
+      - name: Run Newman tests (with CLI log)
+        run: |
+          newman run collections/createOrder.json \
+          -e environment/Dev-environment.json \
+          -r cli,htmlextra \
+          --reporter-htmlextra-export reports/report.html
+        continue-on-error: true
+        # Запускает коллекцию:
+        # - `collections/createOrder.json` — путь к твоей коллекции
+        # - `-e environment/Dev-environment.json` — путь к файлу окружения (можно убрать, если не нужен)
+        # - `-r cli,htmlextra` — лог в терминал + HTML-отчёт
+        # - `--reporter-htmlextra-export` — путь, куда сохранить HTML
+        # - `continue-on-error: true` — позволяет сохранить отчёт, даже если есть ошибки
+
+      - name: Upload HTML report
+        uses: actions/upload-artifact@v4
+        with:
+          name: newman-report
+          path: reports/report.html
+        # Загружает HTML-отчёт как артефакт, чтобы ты мог его скачать
