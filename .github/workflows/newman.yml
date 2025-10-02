@@ -34,7 +34,7 @@ jobs:
 
       - name: Run Newman tests (with CLI log)
         run: |
-          newman run /collections/Collection.postman_collection.json \
+          newman run collections/Collection.postman_collection.json \
           -e environment/dev-env.json \
           -r cli,htmlextra \
           --reporter-htmlextra-export reports/report.html
