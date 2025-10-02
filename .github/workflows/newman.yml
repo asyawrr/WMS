@@ -51,4 +51,22 @@ jobs:
         with:
           name: api-tests
           path: reports/report.html
+
+      - name: Upload Pages artifact
+        if: always()
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: reports   # внутри есть index.html
+
+  deploy:
+    needs: newman
+    if: always()
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
         # Загружает HTML-отчёт как артефакт, чтобы ты мог его скачать
