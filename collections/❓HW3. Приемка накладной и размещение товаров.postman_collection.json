@@ -1,0 +1,4097 @@
+{
+	"info": {
+		"_postman_id": "1bda751d-ed7d-4697-b107-7f107181fe8b",
+		"name": "❓HW3. Приемка накладной и размещение товаров",
+		"description": "# Приёмка накладной и размещение товаров\n\n## Общая цель\n\nКоллекция моделирует полный процесс работы склада:\n\n- Авторизация сотрудника;\n    \n- Создание накладной для приёмки;\n    \n- Создание и использование тележки размещения;\n    \n- Сканирование товаров;\n    \n- Подсчёт фактического количества.\n    \n\nИспользуется **Bearer Token** для аутентификации. Все запросы требуют `{{baseUrl}}` и токен.\n\n## 🔁 Типовые ошибки и формат\n\n### Пример ошибки валидации\n\n``` json\n{\n  \"message\": \"Ошибка валидации данных\",\n  \"error\": \"Location not found\",\n  \"code\": \"VALIDATION_ERROR\"\n}\n\n ```\n\n### JSON Schema ошибки\n\n``` json\n{\n  \"type\": \"object\",\n  \"required\": [\"message\"],\n  \"properties\": {\n    \"message\": { \"type\": \"string\" },\n    \"error\": { \"type\": \"string\" },\n    \"code\": { \"type\": \"string\" }\n  }\n}\n\n ```\n\n---\n\n## 📚 Примечания по использованию переменных Postman\n\n- `{{bearerToken}}` — сохраняется автоматически после успешного `/auth/login` (в Tests).\n    \n- `{{invoiceNumber}}`, `{{invoiceBarcode}}`, `{{invoiceItems}}` — генерируются в pre-request при создании накладной.\n    \n- `{{cartId}}` — сохраняется после создания тележки.\n    \n- `{{itemId_0}}`, `{{itemId_1}}`, `{{itemBarcode}}` — подставляются при сканировании и подсчёте.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "47321198"
+	},
+	"item": [
+		{
+			"name": "Авторизация пользователя",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"// Сохраняем значения в переменные коллекции",
+							"let response = pm.response.json();",
+							"",
+							"pm.collectionVariables.set(\"user_id\", response.user.id);",
+							"pm.collectionVariables.set(\"bearerToken\", response.token);",
+							"",
+							"// Tests",
+							"// Test 1. Status code",
+							"pm.test(\"Status code is 200\", function () {",
+							"    pm.response.to.have.status(200);",
+							"});",
+							"",
+							"// Test 2. Response time",
+							"pm.test(\"Response time is less than 400ms\", function () {",
+							"    pm.expect(pm.response.responseTime).to.be.below(400);",
+							"});"
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				}
+			],
+			"request": {
+				"auth": {
+					"type": "noauth"
+				},
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "Accept",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"email\": \"{{user_email}}\",\n  \"password\": \"{{user_password}}\"\n}",
+					"options": {
+						"raw": {
+							"headerFamily": "json",
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{baseUrl}}/auth/login",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"auth",
+						"login"
+					]
+				},
+				"description": "## 🔑 Login API\n\nЭндпоинт `/auth/login` выполняет аутентификацию пользователя по email и паролю. При успешной проверке возвращается токен и данные пользователя. Токен используется для всех последующих запросов.\n\n### Request\n\n**Method**: `POST`  \n**URL**: `{{baseUrl}}/auth/login`\n\n### Тело запроса\n\nJSON с обязательными полями:\n\n- **email** _(string)_ — адрес электронной почты пользователя.\n    \n- **password** _(string)_ — пароль пользователя.\n    \n\n**Пример**\n\n``` json\n{\n  \"email\": \"{{user_email}}\",\n  \"password\": \"{{user_password}}\"\n}\n\n ```\n\n### Response\n\n**Status Code**: `200 OK`  \n**Content-Type**: `application/json`\n\n**Тело ответа**\n\n- **token** _(string)_ — токен для аутентификации.\n    \n- **user** _(object)_ — данные пользователя:\n    - **_id** _(string)_ — уникальный идентификатор пользователя.\n        \n    - **username** _(string)_ — имя пользователя.\n        \n    - **email** _(string)_ — email.\n        \n    - **role** _(string)_ — роль (например, `worker`, `admin`).\n        \n    - **isActive** _(boolean)_ — активен ли пользователь.\n        \n    - **lastLogin** _(string, ISO8601)_ — время последнего входа.\n        \n    - **createdAt** _(string, ISO8601)_ — время создания учётной записи.\n        \n    - **updatedAt** _(string, ISO8601)_ — время последнего обновления.\n        \n\n**Пример**\n\n``` json\n{\n  \"token\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...\",\n  \"user\": {\n    \"_id\": \"60d21b4667d0d8992e610c85\",\n    \"username\": \"john_doe\",\n    \"email\": \"john@example.com\",\n    \"role\": \"worker\",\n    \"isActive\": true,\n    \"lastLogin\": \"2025-01-15T09:30:00Z\",\n    \"createdAt\": \"2025-01-01T10:00:00Z\",\n    \"updatedAt\": \"2025-01-10T15:30:00Z\"\n  }\n}\n\n ```\n\n### JSON Schema ответа\n\n``` json\n{\n  \"type\": \"object\",\n  \"required\": [\"token\", \"user\"],\n  \"properties\": {\n    \"token\": { \"type\": \"string\" },\n    \"user\": {\n      \"type\": \"object\",\n      \"required\": [\"_id\", \"email\", \"role\", \"isActive\"],\n      \"properties\": {\n        \"_id\": { \"type\": \"string\" },\n        \"username\": { \"type\": \"string\" },\n        \"email\": { \"type\": \"string\" },\n        \"role\": { \"type\": \"string\" },\n        \"isActive\": { \"type\": \"boolean\" },\n        \"lastLogin\": { \"type\": \"string\" },\n        \"createdAt\": { \"type\": \"string\" },\n        \"updatedAt\": { \"type\": \"string\" }\n      }\n    }\n  }\n}\n\n ```\n\n### Ошибки\n\n- `401 Unauthorized` — неверные учётные данные.\n    \n- `5xx` — внутренняя ошибка сервера."
+			},
+			"response": [
+				{
+					"name": "Успешная авторизация",
+					"originalRequest": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer <token>",
+								"description": "Added as a part of security scheme: bearer"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"string\",\n  \"password\": \"string\"\n}",
+							"options": {
+								"raw": {
+									"headerFamily": "json",
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/auth/login",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"auth",
+								"login"
+							]
+						}
+					},
+					"status": "OK",
+					"code": 200,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"cookie": [],
+					"body": "{\n  \"token\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...\",\n  \"user\": {\n    \"_id\": \"60d21b4667d0d8992e610c85\",\n    \"username\": \"john_doe\",\n    \"email\": \"john@example.com\",\n    \"role\": \"worker\",\n    \"isActive\": true,\n    \"lastLogin\": \"2025-01-15T09:30:00Z\",\n    \"createdAt\": \"2025-01-01T10:00:00Z\",\n    \"updatedAt\": \"2025-01-10T15:30:00Z\"\n  }\n}"
+				},
+				{
+					"name": "Неверные учетные данные",
+					"originalRequest": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer <token>",
+								"description": "Added as a part of security scheme: bearer"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"string\"\n}",
+							"options": {
+								"raw": {
+									"headerFamily": "json",
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/auth/login",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"auth",
+								"login"
+							]
+						}
+					},
+					"status": "Unauthorized",
+					"code": 401,
+					"_postman_previewlanguage": "text",
+					"header": [],
+					"cookie": [],
+					"body": "{\n    \"message\": \"Неверный email или пароль\"\n}"
+				}
+			]
+		},
+		{
+			"name": "Создать новую тележку размещения Copy",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"let response = pm.response.json();",
+							"",
+							"// Tests",
+							"// Test 1. Check if the response status code is 200 or 201.",
+							"pm.test(\"Status code is 200 or 201\", function() {",
+							"    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+							"});",
+							"",
+							"// Test 2. Check if the cart status is 'free'.",
+							"pm.test(\"Cart status is 'free'\", function () {",
+							"    pm.expect(response.status).to.eql(\"free\");",
+							"});",
+							"",
+							"// Сохраняем ID тележки в переменную коллекции для использования в последующих запросах.",
+							"pm.collectionVariables.set(\"cartId\", response._id);",
+							"",
+							"// Логируем ID тележки для отладки.",
+							"console.log(\"Cart ID: \" + pm.collectionVariables.get(\"cartId\"));",
+							""
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				}
+			],
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "{{bearerToken}}",
+							"type": "string"
+						}
+					]
+				},
+				"method": "POST",
+				"header": [
+					{
+						"key": "Accept",
+						"value": "application/json"
+					}
+				],
+				"url": {
+					"raw": "{{baseUrl}}/placement-carts",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"placement-carts"
+					]
+				},
+				"description": "## 🛒 Placement Cart API — создание тележки\n\nЭндпоинт `/placement-carts` создаёт пустую тележку размещения со статусом `free`.  \nИдентификатор тележки сохраняется и используется при подсчёте количества для привязки товара к тележке.\n\n### Request\n\n**Method**: `POST`  \n**URL**: `{{baseUrl}}/placement-carts`  \n**Headers**: `Authorization: Bearer {{bearerToken}}`  \n**Body**: отсутствует\n\n### Response\n\n**Status Code**: `201 Created`  \n**Content-Type**: `application/json`\n\n**Тело ответа**\n\n- **_id** _(string)_ — ID тележки.\n    \n- **status** _(string)_ — текущий статус (`free` | `in_use` и т.п.).\n    \n- **items** _(array)_ — список привязанных позиций (может быть пустым).\n    \n- **createdAt** _(string, ISO8601)_ — время создания.\n    \n\n**Пример**\n\n``` json\n{\n  \"_id\": \"60d21b4667d0d8992e610c85\",\n  \"status\": \"free\",\n  \"items\": [],\n  \"createdAt\": \"2025-03-10T10:00:00Z\"\n}\n\n ```\n\n### JSON Schema ответа\n\n``` json\n{\n  \"type\": \"object\",\n  \"required\": [\"_id\", \"status\"],\n  \"properties\": {\n    \"_id\": { \"type\": \"string\" },\n    \"status\": { \"type\": \"string\", \"enum\": [\"free\", \"in_use\", \"closed\"] },\n    \"items\": { \"type\": \"array\", \"items\": { \"type\": \"object\" } },\n    \"createdAt\": { \"type\": \"string\" }\n  }\n}\n\n ```\n\n### Ошибки\n\n- `500 Internal Server Error` — ошибка валидации или сохранения."
+			},
+			"response": [
+				{
+					"name": "Тележка размещения успешно создана",
+					"originalRequest": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer <token>",
+								"description": "Added as a part of security scheme: bearer"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/placement-carts",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"placement-carts"
+							]
+						}
+					},
+					"status": "Created",
+					"code": 201,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"cookie": [],
+					"body": "{\n  \"_id\": \"60d21b4667d0d8992e610c85\",\n  \"status\": \"free\",\n  \"items\": [\n    {\n      \"invoiceId\": \"60d21b4667d0d8992e610c86\",\n      \"itemId\": \"item-001\",\n      \"sku\": \"PROD-001\",\n      \"quantity\": 10,\n      \"placedQuantity\": 5\n    },\n    {\n      \"invoiceId\": \"60d21b4667d0d8992e610c86\",\n      \"itemId\": \"item-001\",\n      \"sku\": \"PROD-001\",\n      \"quantity\": 10,\n      \"placedQuantity\": 5\n    }\n  ],\n  \"createdAt\": \"2025-03-10T10:00:00Z\"\n}"
+				},
+				{
+					"name": "Ошибка сервера",
+					"originalRequest": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer <token>",
+								"description": "Added as a part of security scheme: bearer"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/placement-carts",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"placement-carts"
+							]
+						}
+					},
+					"status": "Internal Server Error",
+					"code": 500,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"cookie": [],
+					"body": "{\n  \"message\": \"Ошибка валидации данных\",\n  \"error\": \"Location not found\",\n  \"code\": \"VALIDATION_ERROR\"\n}"
+				}
+			]
+		},
+		{
+			"name": "Создать новую накладную приёмки",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"let response = pm.response.json();",
+							"pm.collectionVariables.set(\"invoiceId\", response._id);",
+							"",
+							"// Tests",
+							"// Test 1. Status code",
+							"pm.test(\"Status code is 200 or 201\", function() {",
+							"    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+							"});",
+							"",
+							"// Test 2. Invoice status is new",
+							"pm.test(\"Invoice status is 'new'\", function() {",
+							"    pm.expect(response.status).to.equal('new');",
+							"});",
+							""
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				},
+				{
+					"listen": "prerequest",
+					"script": {
+						"exec": [
+							"// Формируем invoiceNumber с текущим временем.",
+							"let timestamp = new Date().getTime();",
+							"pm.collectionVariables.set(\"invoiceNumber\", `INV-${timestamp}`)",
+							"",
+							"// Генерируем товары в массив",
+							"",
+							"let items = [];",
+							"",
+							"// Добавляем два товара в массив items.",
+							"for (let i = 0; i < 2; i++) {",
+							"    let item = {",
+							"        id: \"item-00\" + i,",
+							"        productId: \"EXT-00\" + i,",
+							"        sku: \"PROD-00\" + i,",
+							"        name: \"Test Item \" + i,",
+							"        expectedQuantity: 10,",
+							"        barcode: \"460712345678\" + i",
+							"    };",
+							"    items.push(item);",
+							"    // Сохраняем каждый товар как отдельную переменную в коллекции - объект и id",
+							"    pm.collectionVariables.set(\"item_\" + i, JSON.stringify(item));",
+							"    pm.collectionVariables.set(\"itemId_\" + i, item.id);",
+							"    // Логируем id созданных товаров",
+							"    console.log(\"Created item ID:\", item.id);",
+							"}",
+							"",
+							"// Сохраняем массив как строку в переменную коллекции",
+							"pm.collectionVariables.set(\"invoiceItems\", JSON.stringify(items));",
+							"",
+							"// Генератор случайного 13-значного invoiceBarcode (строкой)",
+							"function getRandomBarcode() {",
+							"  let digits = \"\";",
+							"  for (let i = 0; i < 13; i++) {",
+							"    digits += Math.floor(Math.random() * 10);",
+							"  }",
+							"  return digits;",
+							"}",
+							"",
+							"let barcode = getRandomBarcode();",
+							"pm.collectionVariables.set(\"invoiceBarcode\", barcode);",
+							"",
+							"// Логируем id созданного invoiceBarcode",
+							"console.log(\"Generated barcode:\", barcode);"
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				}
+			],
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "{{bearerToken}}",
+							"type": "string"
+						}
+					]
+				},
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "Accept",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"invoiceNumber\": \"{{invoiceNumber}}\",\n  \"barcode\": \"{{invoiceBarcode}}\",\n  \"items\": {{invoiceItems}}\n}",
+					"options": {
+						"raw": {
+							"headerFamily": "json",
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{baseUrl}}/receiving",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"receiving"
+					]
+				},
+				"description": "## 📄 Receiving API — создание накладной приёмки\n\nЭндпоинт `/receiving` создаёт накладную приёмки и добавляет в неё позиции.  \nНомер накладной и список товаров обычно формируются автоматически на уровне клиента (pre-request скрипт).\n\n### Request\n\n**Method**: `POST`  \n**URL**: `{{baseUrl}}/receiving`  \n**Headers**: `Authorization: Bearer {{bearerToken}}`, `Content-Type: application/json`\n\n### Тело запроса\n- **invoiceNumber** *(string)* — номер накладной.  \n- **barcode** *(string)* — штрихкод накладной (13 цифр).  \n- **items** *(array of object)* — массив товаров:  \n  - **id** *(string)* — ID позиции в накладной.  \n  - **productId** *(string)* — внешний ID товара.  \n  - **sku** *(string)* — артикул.  \n  - **name** *(string)* — наименование.  \n  - **expectedQuantity** *(integer)* — ожидаемое количество.  \n  - **barcode** *(string)* — штрихкод товара.\n\n**Пример**\n```json\n{\n  \"invoiceNumber\": \"INV-1730568745123\",\n  \"barcode\": \"4607123456780\",\n  \"items\": [\n    {\n      \"id\": \"item-000\",\n      \"productId\": \"EXT-000\",\n      \"sku\": \"PROD-000\",\n      \"name\": \"Test Item 0\",\n      \"expectedQuantity\": 10,\n      \"barcode\": \"4607123456780\"\n    },\n    {\n      \"id\": \"item-001\",\n      \"productId\": \"EXT-001\",\n      \"sku\": \"PROD-001\",\n      \"name\": \"Test Item 1\",\n      \"expectedQuantity\": 10,\n      \"barcode\": \"4607123456781\"\n    }\n  ]\n}\n```\n\n### Response\n\n**Status Code**: `201 Created`  \n**Content-Type**: `application/json`\n\n**Тело ответа**\n- **_id** *(string)* — ID накладной.  \n- **invoiceNumber** *(string)* — номер накладной.  \n- **barcode** *(string)* — штрихкод накладной.  \n- **status** *(string)* — статус (обычно `new` после создания).  \n- **items** *(array)* — позиции накладной:  \n  - **id**, **productId**, **sku**, **name**, **barcode**, **expectedQuantity** *(integer)*,  \n    **actualQuantity** *(integer, optional)*, **placedQuantity** *(integer, optional)*,  \n    **status** *(string, например `pending` | `scanned` | `counted`)*,  \n    **placementCartId** *(string, optional)*.  \n- **createdAt** *(string, ISO8601)* — время создания.\n\n**Пример**\n```json\n{\n  \"_id\": \"60d21b4667d0d8992e610c85\",\n  \"invoiceNumber\": \"INV-12345\",\n  \"barcode\": \"4607123456780\",\n  \"status\": \"new\",\n  \"items\": [\n    {\n      \"id\": \"item-000\",\n      \"productId\": \"EXT-000\",\n      \"sku\": \"PROD-000\",\n      \"name\": \"Test Item 0\",\n      \"barcode\": \"4607123456780\",\n      \"expectedQuantity\": 10,\n      \"actualQuantity\": 0,\n      \"placedQuantity\": 0,\n      \"status\": \"pending\"\n    },\n    {\n      \"id\": \"item-001\",\n      \"productId\": \"EXT-001\",\n      \"sku\": \"PROD-001\",\n      \"name\": \"Test Item 1\",\n      \"barcode\": \"4607123456781\",\n      \"expectedQuantity\": 10,\n      \"actualQuantity\": 0,\n      \"placedQuantity\": 0,\n      \"status\": \"pending\"\n    }\n  ],\n  \"createdAt\": \"2025-03-10T10:00:00Z\"\n}\n```\n\n### JSON Schema ответа\n```json\n{\n  \"type\": \"object\",\n  \"required\": [\"_id\", \"invoiceNumber\", \"barcode\", \"status\", \"items\"],\n  \"properties\": {\n    \"_id\": { \"type\": \"string\" },\n    \"invoiceNumber\": { \"type\": \"string\" },\n    \"barcode\": { \"type\": \"string\" },\n    \"status\": { \"type\": \"string\", \"enum\": [\"new\", \"in_progress\", \"completed\", \"cancelled\"] },\n    \"items\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"object\",\n        \"required\": [\"id\", \"sku\", \"name\", \"barcode\", \"expectedQuantity\", \"status\"],\n        \"properties\": {\n          \"id\": { \"type\": \"string\" },\n          \"productId\": { \"type\": \"string\" },\n          \"sku\": { \"type\": \"string\" },\n          \"name\": { \"type\": \"string\" },\n          \"barcode\": { \"type\": \"string\" },\n          \"expectedQuantity\": { \"type\": \"integer\" },\n          \"actualQuantity\": { \"type\": \"integer\" },\n          \"placedQuantity\": { \"type\": \"integer\" },\n          \"status\": { \"type\": \"string\", \"enum\": [\"pending\", \"scanned\", \"counted\", \"placed\"] },\n          \"placementCartId\": { \"type\": \"string\" }\n        }\n      }\n    },\n    \"createdAt\": { \"type\": \"string\" }\n  }\n}\n```\n\n### Ошибки\n- `400 Bad Request` — ошибка валидации входных данных.  \n- `500 Internal Server Error` — внутренняя ошибка сервера.\n"
+			},
+			"response": [
+				{
+					"name": "Накладная успешно создана",
+					"originalRequest": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer <token>",
+								"description": "Added as a part of security scheme: bearer"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"invoiceNumber\": \"INV-12345\",\n  \"items\": [\n    {\n      \"id\": \"item-001\",\n      \"productId\": \"EXT-001\",\n      \"sku\": \"PROD-001\",\n      \"name\": \"Смартфон XYZ\",\n      \"expectedQuantity\": 10,\n      \"barcode\": \"4607123456789\"\n    },\n    {\n      \"id\": \"item-001\",\n      \"productId\": \"EXT-001\",\n      \"sku\": \"PROD-001\",\n      \"name\": \"Смартфон XYZ\",\n      \"expectedQuantity\": 10,\n      \"barcode\": \"4607123456789\"\n    }\n  ],\n  \"barcode\": \"4607123456780\"\n}",
+							"options": {
+								"raw": {
+									"headerFamily": "json",
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/receiving",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"receiving"
+							]
+						}
+					},
+					"status": "Created",
+					"code": 201,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"cookie": [],
+					"body": "{\n  \"_id\": \"60d21b4667d0d8992e610c85\",\n  \"invoiceNumber\": \"INV-12345\",\n  \"barcode\": \"4607123456780\",\n  \"status\": \"new\",\n  \"items\": [\n    {\n      \"id\": \"item-001\",\n      \"productId\": \"EXT-001\",\n      \"sku\": \"PROD-001\",\n      \"name\": \"Смартфон XYZ\",\n      \"barcode\": \"4607123456789\",\n      \"expectedQuantity\": 10,\n      \"actualQuantity\": 8,\n      \"placedQuantity\": 0,\n      \"status\": \"pending\",\n      \"placementCartId\": \"60d21b4667d0d8992e610c86\"\n    },\n    {\n      \"id\": \"item-001\",\n      \"productId\": \"EXT-001\",\n      \"sku\": \"PROD-001\",\n      \"name\": \"Смартфон XYZ\",\n      \"barcode\": \"4607123456789\",\n      \"expectedQuantity\": 10,\n      \"actualQuantity\": 8,\n      \"placedQuantity\": 0,\n      \"status\": \"pending\",\n      \"placementCartId\": \"60d21b4667d0d8992e610c86\"\n    }\n  ],\n  \"createdAt\": \"2025-03-10T10:00:00Z\"\n}"
+				},
+				{
+					"name": "Неверные данные запроса",
+					"originalRequest": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer <token>",
+								"description": "Added as a part of security scheme: bearer"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"invoiceNumber\": \"INV-12345\",\n  \"items\": [\n    {\n      \"id\": \"item-001\",\n      \"productId\": \"EXT-001\",\n      \"sku\": \"PROD-001\",\n      \"name\": \"Смартфон XYZ\",\n      \"expectedQuantity\": 10,\n      \"barcode\": \"4607123456789\"\n    },\n    {\n      \"id\": \"item-001\",\n      \"productId\": \"EXT-001\",\n      \"sku\": \"PROD-001\",\n      \"name\": \"Смартфон XYZ\",\n      \"expectedQuantity\": 10,\n      \"barcode\": \"4607123456789\"\n    }\n  ],\n  \"barcode\": \"4607123456780\"\n}",
+							"options": {
+								"raw": {
+									"headerFamily": "json",
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/receiving",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"receiving"
+							]
+						}
+					},
+					"status": "Bad Request",
+					"code": 400,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"cookie": [],
+					"body": "{\n  \"message\": \"Ошибка валидации данных\",\n  \"error\": \"Location not found\",\n  \"code\": \"VALIDATION_ERROR\"\n}"
+				},
+				{
+					"name": "Ошибка сервера",
+					"originalRequest": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer <token>",
+								"description": "Added as a part of security scheme: bearer"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"invoiceNumber\": \"INV-12345\",\n  \"items\": [\n    {\n      \"id\": \"item-001\",\n      \"productId\": \"EXT-001\",\n      \"sku\": \"PROD-001\",\n      \"name\": \"Смартфон XYZ\",\n      \"expectedQuantity\": 10,\n      \"barcode\": \"4607123456789\"\n    },\n    {\n      \"id\": \"item-001\",\n      \"productId\": \"EXT-001\",\n      \"sku\": \"PROD-001\",\n      \"name\": \"Смартфон XYZ\",\n      \"expectedQuantity\": 10,\n      \"barcode\": \"4607123456789\"\n    }\n  ],\n  \"barcode\": \"4607123456780\"\n}",
+							"options": {
+								"raw": {
+									"headerFamily": "json",
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/receiving",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"receiving"
+							]
+						}
+					},
+					"status": "Internal Server Error",
+					"code": 500,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"cookie": [],
+					"body": "{\n  \"message\": \"Ошибка валидации данных\",\n  \"error\": \"Location not found\",\n  \"code\": \"VALIDATION_ERROR\"\n}"
+				}
+			]
+		},
+		{
+			"name": "Начать обработку накладной",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"let response = pm.response.json();",
+							"",
+							"// Tests",
+							"// Test 1. Status code",
+							"pm.test(\"Status code is 200 or 201\", function() {",
+							"    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+							"});",
+							"",
+							"// Test 2. Invoice Barcode is correct",
+							"pm.test(\"Invoice Barcode is correct\", function() {",
+							"    pm.expect(response.barcode).to.equal(pm.collectionVariables.get(\"invoiceBarcode\"));",
+							"});",
+							"",
+							"// Test 3. Invoice status is in_progress",
+							"pm.test(\"Invoice status is in_progress\", function() {",
+							"    pm.expect(response.status).to.equal(\"in_progress\");",
+							"});",
+							""
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				},
+				{
+					"listen": "prerequest",
+					"script": {
+						"exec": [
+							""
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				}
+			],
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "{{bearerToken}}",
+							"type": "string"
+						}
+					]
+				},
+				"method": "POST",
+				"header": [
+					{
+						"key": "Accept",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"barcode\": \"{{invoiceBarcode}}\"\n} ",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{baseUrl}}/receiving/:invoiceId/scan",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"receiving",
+						":invoiceId",
+						"scan"
+					],
+					"variable": [
+						{
+							"key": "invoiceId",
+							"value": "{{invoiceId}}",
+							"description": "(Required) ID накладной"
+						}
+					]
+				},
+				"description": "## ▶ Receiving Scan API — старт обработки накладной\n\nЭндпоинт `/receiving/:invoiceId/scan` переводит накладную в статус **`in_progress`** после сканирования штрихкода накладной.\n\n### Request\n\n**Method**: `POST`  \n**URL**: `{{baseUrl}}/receiving/:invoiceId/scan`  \n**Headers**: `Authorization: Bearer {{bearerToken}}`, `Content-Type: application/json`\n\n### Параметры пути\n- **invoiceId** *(string, required)* — ID накладной.\n\n### Тело запроса\n- **barcode** *(string)* — штрихкод накладной, должен совпадать с ранее созданным.\n\n**Пример**\n```json\n{ \"barcode\": \"{{invoiceBarcode}}\" }\n```\n\n### Response\n\n**Status Code**: `200 OK`  \n**Content-Type**: `application/json`\n\n**Тело ответа** — объект накладной с обновлённым статусом:\n- **_id**, **invoiceNumber**, **barcode**, **status** = `in_progress`, **items**[], **createdAt**.\n\n**Пример**\n```json\n{\n  \"_id\": \"60d21b4667d0d8992e610c85\",\n  \"invoiceNumber\": \"INV-12345\",\n  \"barcode\": \"4607123456780\",\n  \"status\": \"in_progress\",\n  \"items\": []\n}\n```\n\n### JSON Schema ответа\n```json\n{\n  \"type\": \"object\",\n  \"required\": [\"_id\", \"invoiceNumber\", \"barcode\", \"status\"],\n  \"properties\": {\n    \"_id\": { \"type\": \"string\" },\n    \"invoiceNumber\": { \"type\": \"string\" },\n    \"barcode\": { \"type\": \"string\" },\n    \"status\": { \"type\": \"string\", \"enum\": [\"in_progress\"] },\n    \"items\": { \"type\": \"array\", \"items\": { \"type\": \"object\" } },\n    \"createdAt\": { \"type\": \"string\" }\n  }\n}\n```\n\n### Ошибки\n- `404 Not Found` — накладная не найдена.  \n- `400 Bad Request` — неверный штрихкод.  \n- `500 Internal Server Error`.Изменяет статус накладной на \"в процессе приёмки\""
+			},
+			"response": [
+				{
+					"name": "Обработка накладной успешно начата",
+					"originalRequest": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer <token>",
+								"description": "Added as a part of security scheme: bearer"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/receiving/:invoiceId/scan",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"receiving",
+								":invoiceId",
+								"scan"
+							],
+							"variable": [
+								{
+									"key": "invoiceId"
+								}
+							]
+						}
+					},
+					"status": "OK",
+					"code": 200,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"cookie": [],
+					"body": "{\n  \"_id\": \"60d21b4667d0d8992e610c85\",\n  \"invoiceNumber\": \"INV-12345\",\n  \"barcode\": \"4607123456780\",\n  \"status\": \"new\",\n  \"items\": [\n    {\n      \"id\": \"item-001\",\n      \"productId\": \"EXT-001\",\n      \"sku\": \"PROD-001\",\n      \"name\": \"Смартфон XYZ\",\n      \"barcode\": \"4607123456789\",\n      \"expectedQuantity\": 10,\n      \"actualQuantity\": 8,\n      \"placedQuantity\": 0,\n      \"status\": \"pending\",\n      \"placementCartId\": \"60d21b4667d0d8992e610c86\"\n    },\n    {\n      \"id\": \"item-001\",\n      \"productId\": \"EXT-001\",\n      \"sku\": \"PROD-001\",\n      \"name\": \"Смартфон XYZ\",\n      \"barcode\": \"4607123456789\",\n      \"expectedQuantity\": 10,\n      \"actualQuantity\": 8,\n      \"placedQuantity\": 0,\n      \"status\": \"pending\",\n      \"placementCartId\": \"60d21b4667d0d8992e610c86\"\n    }\n  ],\n  \"createdAt\": \"2025-03-10T10:00:00Z\"\n}"
+				},
+				{
+					"name": "Накладная не найдена",
+					"originalRequest": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer <token>",
+								"description": "Added as a part of security scheme: bearer"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/receiving/:invoiceId/scan",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"receiving",
+								":invoiceId",
+								"scan"
+							],
+							"variable": [
+								{
+									"key": "invoiceId"
+								}
+							]
+						}
+					},
+					"status": "Not Found",
+					"code": 404,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"cookie": [],
+					"body": "{\n  \"message\": \"Ошибка валидации данных\",\n  \"error\": \"Location not found\",\n  \"code\": \"VALIDATION_ERROR\"\n}"
+				},
+				{
+					"name": "Ошибка сервера",
+					"originalRequest": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer <token>",
+								"description": "Added as a part of security scheme: bearer"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/receiving/:invoiceId/scan",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"receiving",
+								":invoiceId",
+								"scan"
+							],
+							"variable": [
+								{
+									"key": "invoiceId"
+								}
+							]
+						}
+					},
+					"status": "Internal Server Error",
+					"code": 500,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"cookie": [],
+					"body": "{\n  \"message\": \"Ошибка валидации данных\",\n  \"error\": \"Location not found\",\n  \"code\": \"VALIDATION_ERROR\"\n}"
+				}
+			]
+		},
+		{
+			"name": "Сканировать товар 1 в накладной",
+			"event": [
+				{
+					"listen": "prerequest",
+					"script": {
+						"exec": [
+							"// Создаем локальную переменную item_barcode для сканирования первого товараф",
+							"let item_0 = JSON.parse(pm.collectionVariables.get(\"item_0\"));",
+							"let barcode_0 = item_0.barcode;",
+							"pm.variables.set(\"itemBarcode\", barcode_0);",
+							""
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				},
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"let response = pm.response.json();",
+							"",
+							"// Tests",
+							"// Test 1. Status code",
+							"pm.test(\"Status code is 200 or 201\", function() {",
+							"    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+							"});",
+							"",
+							"// Test 2. Status message is scanned",
+							"pm.test(\"Status message is scanned\", function () { ",
+							"    pm.expect(response.status).to.eql(\"scanned\");",
+							"});"
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				}
+			],
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "{{bearerToken}}",
+							"type": "string"
+						}
+					]
+				},
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "Accept",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"barcode\": \"{{itemBarcode}}\"\n}",
+					"options": {
+						"raw": {
+							"headerFamily": "json",
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{baseUrl}}/receiving/:invoiceId/items/:itemId/scan",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"receiving",
+						":invoiceId",
+						"items",
+						":itemId",
+						"scan"
+					],
+					"variable": [
+						{
+							"key": "invoiceId",
+							"value": "{{invoiceId}}",
+							"description": "(Required) ID накладной"
+						},
+						{
+							"key": "itemId",
+							"value": "{{itemId_0}}",
+							"description": "(Required) ID товара в накладной"
+						}
+					]
+				},
+				"description": "## 📦 Item Scan API — сканирование товара\n\nЭндпоинт `/receiving/:invoiceId/items/:itemId/scan` подтверждает, что конкретная позиция найдена по штрихкоду и меняет её статус на **`scanned`**.\n\n### Request\n\n**Method**: `POST`  \n**URL**: `{{baseUrl}}/receiving/:invoiceId/items/:itemId/scan`  \n**Headers**: `Authorization: Bearer {{bearerToken}}`, `Content-Type: application/json`\n\n### Параметры пути\n\n- **invoiceId** _(string, required)_ — ID накладной.\n    \n- **itemId** _(string, required)_ — ID позиции накладной.\n    \n\n### Тело запроса\n\n- **barcode** _(string, required)_ — штрихкод товара.\n    \n\n**Пример**\n\n``` json\n{ \"barcode\": \"4607123456780\" }\n\n ```\n\n### Response\n\n**Status Code**: `200 OK`  \n**Content-Type**: `application/json`\n\n**Тело ответа**\n\n- **id**, **productId**, **sku**, **name**, **barcode**, **expectedQuantity** _(integer)_, **status** = `scanned`.\n    \n\n**Пример**\n\n``` json\n{\n  \"id\": \"item-000\",\n  \"productId\": \"EXT-000\",\n  \"sku\": \"PROD-000\",\n  \"name\": \"Test Item 0\",\n  \"barcode\": \"4607123456780\",\n  \"expectedQuantity\": 10,\n  \"status\": \"scanned\"\n}\n\n ```\n\n### JSON Schema ответа\n\n``` json\n{\n  \"type\": \"object\",\n  \"required\": [\"id\", \"sku\", \"name\", \"barcode\", \"expectedQuantity\", \"status\"],\n  \"properties\": {\n    \"id\": { \"type\": \"string\" },\n    \"productId\": { \"type\": \"string\" },\n    \"sku\": { \"type\": \"string\" },\n    \"name\": { \"type\": \"string\" },\n    \"barcode\": { \"type\": \"string\" },\n    \"expectedQuantity\": { \"type\": \"integer\" },\n    \"status\": { \"type\": \"string\", \"enum\": [\"scanned\"] }\n  }\n}\n\n ```\n\n### Ошибки\n\n- `400 Bad Request` — штрихкод не соответствует позиции.\n    \n- `404 Not Found` — позиция или накладная не найдены.\n    \n- `500 Internal Server Error`."
+			},
+			"response": [
+				{
+					"name": "Товар успешно отсканирован",
+					"originalRequest": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer <token>",
+								"description": "Added as a part of security scheme: bearer"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"barcode\": \"4607123456789\"\n}",
+							"options": {
+								"raw": {
+									"headerFamily": "json",
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/receiving/:invoiceId/items/:itemId/scan",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"receiving",
+								":invoiceId",
+								"items",
+								":itemId",
+								"scan"
+							],
+							"variable": [
+								{
+									"key": "invoiceId"
+								},
+								{
+									"key": "itemId"
+								}
+							]
+						}
+					},
+					"status": "OK",
+					"code": 200,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"cookie": [],
+					"body": "{\n  \"id\": \"string\",\n  \"productId\": \"string\",\n  \"sku\": \"string\",\n  \"name\": \"string\",\n  \"barcode\": \"string\",\n  \"expectedQuantity\": 4119.208578368436,\n  \"status\": \"scanned\"\n}"
+				},
+				{
+					"name": "Штрихкод не соответствует товару",
+					"originalRequest": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer <token>",
+								"description": "Added as a part of security scheme: bearer"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"barcode\": \"4607123456789\"\n}",
+							"options": {
+								"raw": {
+									"headerFamily": "json",
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/receiving/:invoiceId/items/:itemId/scan",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"receiving",
+								":invoiceId",
+								"items",
+								":itemId",
+								"scan"
+							],
+							"variable": [
+								{
+									"key": "invoiceId"
+								},
+								{
+									"key": "itemId"
+								}
+							]
+						}
+					},
+					"status": "Bad Request",
+					"code": 400,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"cookie": [],
+					"body": "{\n  \"message\": \"Ошибка валидации данных\",\n  \"error\": \"Location not found\",\n  \"code\": \"VALIDATION_ERROR\"\n}"
+				},
+				{
+					"name": "Накладная или товар не найдены",
+					"originalRequest": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer <token>",
+								"description": "Added as a part of security scheme: bearer"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"barcode\": \"4607123456789\"\n}",
+							"options": {
+								"raw": {
+									"headerFamily": "json",
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/receiving/:invoiceId/items/:itemId/scan",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"receiving",
+								":invoiceId",
+								"items",
+								":itemId",
+								"scan"
+							],
+							"variable": [
+								{
+									"key": "invoiceId"
+								},
+								{
+									"key": "itemId"
+								}
+							]
+						}
+					},
+					"status": "Not Found",
+					"code": 404,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"cookie": [],
+					"body": "{\n  \"message\": \"Ошибка валидации данных\",\n  \"error\": \"Location not found\",\n  \"code\": \"VALIDATION_ERROR\"\n}"
+				},
+				{
+					"name": "Ошибка сервера",
+					"originalRequest": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer <token>",
+								"description": "Added as a part of security scheme: bearer"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"barcode\": \"4607123456789\"\n}",
+							"options": {
+								"raw": {
+									"headerFamily": "json",
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/receiving/:invoiceId/items/:itemId/scan",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"receiving",
+								":invoiceId",
+								"items",
+								":itemId",
+								"scan"
+							],
+							"variable": [
+								{
+									"key": "invoiceId"
+								},
+								{
+									"key": "itemId"
+								}
+							]
+						}
+					},
+					"status": "Internal Server Error",
+					"code": 500,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"cookie": [],
+					"body": "{\n  \"message\": \"Ошибка валидации данных\",\n  \"error\": \"Location not found\",\n  \"code\": \"VALIDATION_ERROR\"\n}"
+				}
+			]
+		},
+		{
+			"name": "Сканировать товар 2 в накладной",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"let response = pm.response.json();",
+							"",
+							"// Tests",
+							"// Test 1. Status code",
+							"pm.test(\"Status code is 200 or 201\", function() {",
+							"    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+							"});",
+							"",
+							"// Test 2. Status message is scanned",
+							"pm.test(\"Status message is scanned\", function () { ",
+							"    pm.expect(response.status).to.eql(\"scanned\");",
+							"});"
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				},
+				{
+					"listen": "prerequest",
+					"script": {
+						"exec": [
+							"// Создаем локальную переменную item_barcode для сканирования первого товараф",
+							"",
+							"let item_1 = JSON.parse(pm.collectionVariables.get(\"item_1\"));",
+							"let barcode_1 = item_1.barcode;",
+							"pm.variables.set(\"itemBarcode\", barcode_1);"
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				}
+			],
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "{{bearerToken}}",
+							"type": "string"
+						}
+					]
+				},
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "Accept",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"barcode\": \"{{itemBarcode}}\"\n}",
+					"options": {
+						"raw": {
+							"headerFamily": "json",
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{baseUrl}}/receiving/:invoiceId/items/:itemId/scan",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"receiving",
+						":invoiceId",
+						"items",
+						":itemId",
+						"scan"
+					],
+					"variable": [
+						{
+							"key": "invoiceId",
+							"value": "{{invoiceId}}",
+							"description": "(Required) ID накладной"
+						},
+						{
+							"key": "itemId",
+							"value": "{{itemId_1}}",
+							"description": "(Required) ID товара в накладной"
+						}
+					]
+				},
+				"description": "## 📦 Item Scan API — сканирование товара\n\nЭндпоинт `/receiving/:invoiceId/items/:itemId/scan` подтверждает, что конкретная позиция найдена по штрихкоду и меняет её статус на **`scanned`**.\n\n### Request\n\n**Method**: `POST`  \n**URL**: `{{baseUrl}}/receiving/:invoiceId/items/:itemId/scan`  \n**Headers**: `Authorization: Bearer {{bearerToken}}`, `Content-Type: application/json`\n\n### Параметры пути\n\n- **invoiceId** _(string, required)_ — ID накладной.\n    \n- **itemId** _(string, required)_ — ID позиции накладной.\n    \n\n### Тело запроса\n\n- **barcode** _(string, required)_ — штрихкод товара.\n    \n\n**Пример**\n\n``` json\n{ \"barcode\": \"4607123456780\" }\n\n ```\n\n### Response\n\n**Status Code**: `200 OK`  \n**Content-Type**: `application/json`\n\n**Тело ответа**\n\n- **id**, **productId**, **sku**, **name**, **barcode**, **expectedQuantity** _(integer)_, **status** = `scanned`.\n    \n\n**Пример**\n\n``` json\n{\n  \"id\": \"item-000\",\n  \"productId\": \"EXT-000\",\n  \"sku\": \"PROD-000\",\n  \"name\": \"Test Item 0\",\n  \"barcode\": \"4607123456780\",\n  \"expectedQuantity\": 10,\n  \"status\": \"scanned\"\n}\n\n ```\n\n### JSON Schema ответа\n\n``` json\n{\n  \"type\": \"object\",\n  \"required\": [\"id\", \"sku\", \"name\", \"barcode\", \"expectedQuantity\", \"status\"],\n  \"properties\": {\n    \"id\": { \"type\": \"string\" },\n    \"productId\": { \"type\": \"string\" },\n    \"sku\": { \"type\": \"string\" },\n    \"name\": { \"type\": \"string\" },\n    \"barcode\": { \"type\": \"string\" },\n    \"expectedQuantity\": { \"type\": \"integer\" },\n    \"status\": { \"type\": \"string\", \"enum\": [\"scanned\"] }\n  }\n}\n\n ```\n\n### Ошибки\n\n- `400 Bad Request` — штрихкод не соответствует позиции.\n    \n- `404 Not Found` — позиция или накладная не найдены.\n    \n- `500 Internal Server Error`."
+			},
+			"response": [
+				{
+					"name": "Товар успешно отсканирован",
+					"originalRequest": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer <token>",
+								"description": "Added as a part of security scheme: bearer"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"barcode\": \"4607123456789\"\n}",
+							"options": {
+								"raw": {
+									"headerFamily": "json",
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/receiving/:invoiceId/items/:itemId/scan",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"receiving",
+								":invoiceId",
+								"items",
+								":itemId",
+								"scan"
+							],
+							"variable": [
+								{
+									"key": "invoiceId"
+								},
+								{
+									"key": "itemId"
+								}
+							]
+						}
+					},
+					"status": "OK",
+					"code": 200,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"cookie": [],
+					"body": "{\n  \"id\": \"string\",\n  \"productId\": \"string\",\n  \"sku\": \"string\",\n  \"name\": \"string\",\n  \"barcode\": \"string\",\n  \"expectedQuantity\": 4119.208578368436,\n  \"status\": \"scanned\"\n}"
+				},
+				{
+					"name": "Штрихкод не соответствует товару",
+					"originalRequest": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer <token>",
+								"description": "Added as a part of security scheme: bearer"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"barcode\": \"4607123456789\"\n}",
+							"options": {
+								"raw": {
+									"headerFamily": "json",
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/receiving/:invoiceId/items/:itemId/scan",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"receiving",
+								":invoiceId",
+								"items",
+								":itemId",
+								"scan"
+							],
+							"variable": [
+								{
+									"key": "invoiceId"
+								},
+								{
+									"key": "itemId"
+								}
+							]
+						}
+					},
+					"status": "Bad Request",
+					"code": 400,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"cookie": [],
+					"body": "{\n  \"message\": \"Ошибка валидации данных\",\n  \"error\": \"Location not found\",\n  \"code\": \"VALIDATION_ERROR\"\n}"
+				},
+				{
+					"name": "Накладная или товар не найдены",
+					"originalRequest": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer <token>",
+								"description": "Added as a part of security scheme: bearer"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"barcode\": \"4607123456789\"\n}",
+							"options": {
+								"raw": {
+									"headerFamily": "json",
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/receiving/:invoiceId/items/:itemId/scan",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"receiving",
+								":invoiceId",
+								"items",
+								":itemId",
+								"scan"
+							],
+							"variable": [
+								{
+									"key": "invoiceId"
+								},
+								{
+									"key": "itemId"
+								}
+							]
+						}
+					},
+					"status": "Not Found",
+					"code": 404,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"cookie": [],
+					"body": "{\n  \"message\": \"Ошибка валидации данных\",\n  \"error\": \"Location not found\",\n  \"code\": \"VALIDATION_ERROR\"\n}"
+				},
+				{
+					"name": "Ошибка сервера",
+					"originalRequest": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer <token>",
+								"description": "Added as a part of security scheme: bearer"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"barcode\": \"4607123456789\"\n}",
+							"options": {
+								"raw": {
+									"headerFamily": "json",
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/receiving/:invoiceId/items/:itemId/scan",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"receiving",
+								":invoiceId",
+								"items",
+								":itemId",
+								"scan"
+							],
+							"variable": [
+								{
+									"key": "invoiceId"
+								},
+								{
+									"key": "itemId"
+								}
+							]
+						}
+					},
+					"status": "Internal Server Error",
+					"code": 500,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"cookie": [],
+					"body": "{\n  \"message\": \"Ошибка валидации данных\",\n  \"error\": \"Location not found\",\n  \"code\": \"VALIDATION_ERROR\"\n}"
+				}
+			]
+		},
+		{
+			"name": "Подсчёт количества товара 1",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"let response = pm.response.json();",
+							"",
+							"// Tests",
+							"// Test 1. Status code",
+							"pm.test(\"Status code is 200 or 201\", function() {",
+							"    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+							"});",
+							"",
+							"// Test 2. Status is counted",
+							"pm.test(\"Status is counted\", function () { ",
+							"    pm.expect(response.status).to.eql(\"counted\");",
+							"});",
+							"",
+							"// Сохраняем item в новую переменную коллекции actualItem",
+							"pm.collectionVariables.set(\"actualItem_1\", JSON.stringify(response));",
+							"console.log(`Актуальное кол-во товара: ${response.actualQuantity} шт.`)",
+							"",
+							"",
+							""
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				},
+				{
+					"listen": "prerequest",
+					"script": {
+						"exec": [
+							"// Генерируем рандомное количество товара и сохраняем в локальную переменную",
+							"let quantity = Math.floor(Math.random() * 10) + 1;",
+							"pm.variables.set(\"randomQuantity\", quantity);"
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				}
+			],
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "{{bearerToken}}",
+							"type": "string"
+						}
+					]
+				},
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "Accept",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"actualQuantity\": {{randomQuantity}},\n  \"placementCartId\": \"{{cartId}}\"\n}",
+					"options": {
+						"raw": {
+							"headerFamily": "json",
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{baseUrl}}/receiving/:invoiceId/items/:itemId/count",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"receiving",
+						":invoiceId",
+						"items",
+						":itemId",
+						"count"
+					],
+					"variable": [
+						{
+							"key": "invoiceId",
+							"value": "{{invoiceId}}",
+							"description": "(Required) ID накладной"
+						},
+						{
+							"key": "itemId",
+							"value": "{{itemId_0}}",
+							"description": "(Required) ID товара в накладной"
+						}
+					]
+				},
+				"description": "## 🔢 Item Count API — подсчёт количества\n\nЭндпоинт `/receiving/:invoiceId/items/:itemId/count` фиксирует **фактическое количество** и опционально **привязывает позицию к тележке** размещения.\n\n### Request\n\n**Method**: `POST`  \n**URL**: `{{baseUrl}}/receiving/:invoiceId/items/:itemId/count`  \n**Headers**: `Authorization: Bearer {{bearerToken}}`, `Content-Type: application/json`\n\n### Параметры пути\n\n- **invoiceId** _(string, required)_ — ID накладной.\n    \n- **itemId** _(string, required)_ — ID позиции накладной.\n    \n\n### Тело запроса\n\n- **actualQuantity** _(integer, required)_ — фактически посчитанное количество.\n    \n- **placementCartId** _(string, optional)_ — ID тележки для привязки позиции.\n    \n\n**Пример**\n\n``` json\n{\n  \"actualQuantity\": 8,\n  \"placementCartId\": \"60d21b4667d0d8992e610c86\"\n}\n\n ```\n\n### Response\n\n**Status Code**: `200 OK`  \n**Content-Type**: `application/json`\n\n**Тело ответа**\n\n- **id**, **productId**, **sku**, **name**, **barcode**,  \n    **expectedQuantity** _(integer)_, **actualQuantity** _(integer)_,  \n    **status** = `counted`, **placementCartId** _(string, optional)_.\n    \n\n**Пример**\n\n``` json\n{\n  \"id\": \"item-000\",\n  \"productId\": \"EXT-000\",\n  \"sku\": \"PROD-000\",\n  \"name\": \"Test Item 0\",\n  \"barcode\": \"4607123456780\",\n  \"expectedQuantity\": 10,\n  \"actualQuantity\": 8,\n  \"status\": \"counted\",\n  \"placementCartId\": \"60d21b4667d0d8992e610c86\"\n}\n\n ```\n\n### JSON Schema ответа\n\n``` json\n{\n  \"type\": \"object\",\n  \"required\": [\"id\", \"sku\", \"name\", \"barcode\", \"expectedQuantity\", \"actualQuantity\", \"status\"],\n  \"properties\": {\n    \"id\": { \"type\": \"string\" },\n    \"productId\": { \"type\": \"string\" },\n    \"sku\": { \"type\": \"string\" },\n    \"name\": { \"type\": \"string\" },\n    \"barcode\": { \"type\": \"string\" },\n    \"expectedQuantity\": { \"type\": \"integer\" },\n    \"actualQuantity\": { \"type\": \"integer\" },\n    \"status\": { \"type\": \"string\", \"enum\": [\"counted\"] },\n    \"placementCartId\": { \"type\": \"string\" }\n  }\n}\n\n ```\n\n### Ошибки\n\n- `404 Not Found` — не найдены накладная/позиция/тележка.\n    \n- `400 Bad Request` — неверные данные.\n    \n- `500 Internal Server Error`."
+			},
+			"response": [
+				{
+					"name": "Количество товара успешно зафиксировано",
+					"originalRequest": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer <token>",
+								"description": "Added as a part of security scheme: bearer"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"actualQuantity\": 8,\n  \"placementCartId\": \"60d21b4667d0d8992e610c86\"\n}",
+							"options": {
+								"raw": {
+									"headerFamily": "json",
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/receiving/:invoiceId/items/:itemId/count",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"receiving",
+								":invoiceId",
+								"items",
+								":itemId",
+								"count"
+							],
+							"variable": [
+								{
+									"key": "invoiceId"
+								},
+								{
+									"key": "itemId"
+								}
+							]
+						}
+					},
+					"status": "OK",
+					"code": 200,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"cookie": [],
+					"body": "{\n  \"id\": \"string\",\n  \"productId\": \"string\",\n  \"sku\": \"string\",\n  \"name\": \"string\",\n  \"barcode\": \"string\",\n  \"expectedQuantity\": 4479.398533694348,\n  \"actualQuantity\": 567.1880757233749,\n  \"status\": \"counted\",\n  \"placementCartId\": \"string\"\n}"
+				},
+				{
+					"name": "Накладная, товар или тележка размещения не найдены",
+					"originalRequest": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer <token>",
+								"description": "Added as a part of security scheme: bearer"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"actualQuantity\": 8,\n  \"placementCartId\": \"60d21b4667d0d8992e610c86\"\n}",
+							"options": {
+								"raw": {
+									"headerFamily": "json",
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/receiving/:invoiceId/items/:itemId/count",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"receiving",
+								":invoiceId",
+								"items",
+								":itemId",
+								"count"
+							],
+							"variable": [
+								{
+									"key": "invoiceId"
+								},
+								{
+									"key": "itemId"
+								}
+							]
+						}
+					},
+					"status": "Not Found",
+					"code": 404,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"cookie": [],
+					"body": "{\n  \"message\": \"Ошибка валидации данных\",\n  \"error\": \"Location not found\",\n  \"code\": \"VALIDATION_ERROR\"\n}"
+				},
+				{
+					"name": "Ошибка сервера",
+					"originalRequest": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer <token>",
+								"description": "Added as a part of security scheme: bearer"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"actualQuantity\": 8,\n  \"placementCartId\": \"60d21b4667d0d8992e610c86\"\n}",
+							"options": {
+								"raw": {
+									"headerFamily": "json",
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/receiving/:invoiceId/items/:itemId/count",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"receiving",
+								":invoiceId",
+								"items",
+								":itemId",
+								"count"
+							],
+							"variable": [
+								{
+									"key": "invoiceId"
+								},
+								{
+									"key": "itemId"
+								}
+							]
+						}
+					},
+					"status": "Internal Server Error",
+					"code": 500,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"cookie": [],
+					"body": "{\n  \"message\": \"Ошибка валидации данных\",\n  \"error\": \"Location not found\",\n  \"code\": \"VALIDATION_ERROR\"\n}"
+				}
+			]
+		},
+		{
+			"name": "Подсчёт количества товара 2",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"let response = pm.response.json();",
+							"",
+							"// Tests",
+							"// Test 1. Status code",
+							"pm.test(\"Status code is 200 or 201\", function() {",
+							"    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+							"});",
+							"",
+							"// Test 2. Status is counted",
+							"pm.test(\"Status is counted\", function () { ",
+							"    pm.expect(response.status).to.eql(\"counted\");",
+							"});",
+							"",
+							"// Сохраняем item в новую переменную коллекции actualItem",
+							"pm.collectionVariables.set(\"actualItem_2\", JSON.stringify(response));",
+							"console.log(`Актуальное кол-во товара: ${response.actualQuantity} шт.`);"
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				},
+				{
+					"listen": "prerequest",
+					"script": {
+						"exec": [
+							"// Генерируем рандомное количество товара и сохраняем в локальную переменную",
+							"let quantity = Math.floor(Math.random() * 10) + 1;",
+							"pm.variables.set(\"randomQuantity\", quantity);"
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				}
+			],
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "{{bearerToken}}",
+							"type": "string"
+						}
+					]
+				},
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "Accept",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"actualQuantity\": {{randomQuantity}},\n  \"placementCartId\": \"{{cartId}}\"\n}",
+					"options": {
+						"raw": {
+							"headerFamily": "json",
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{baseUrl}}/receiving/:invoiceId/items/:itemId/count",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"receiving",
+						":invoiceId",
+						"items",
+						":itemId",
+						"count"
+					],
+					"variable": [
+						{
+							"key": "invoiceId",
+							"value": "{{invoiceId}}",
+							"description": "(Required) ID накладной"
+						},
+						{
+							"key": "itemId",
+							"value": "{{itemId_1}}",
+							"description": "(Required) ID товара в накладной"
+						}
+					]
+				},
+				"description": "## 🔢 Item Count API — подсчёт количества\n\nЭндпоинт `/receiving/:invoiceId/items/:itemId/count` фиксирует **фактическое количество** и опционально **привязывает позицию к тележке** размещения.\n\n### Request\n\n**Method**: `POST`  \n**URL**: `{{baseUrl}}/receiving/:invoiceId/items/:itemId/count`  \n**Headers**: `Authorization: Bearer {{bearerToken}}`, `Content-Type: application/json`\n\n### Параметры пути\n\n- **invoiceId** _(string, required)_ — ID накладной.\n    \n- **itemId** _(string, required)_ — ID позиции накладной.\n    \n\n### Тело запроса\n\n- **actualQuantity** _(integer, required)_ — фактически посчитанное количество.\n    \n- **placementCartId** _(string, optional)_ — ID тележки для привязки позиции.\n    \n\n**Пример**\n\n``` json\n{\n  \"actualQuantity\": 8,\n  \"placementCartId\": \"60d21b4667d0d8992e610c86\"\n}\n\n ```\n\n### Response\n\n**Status Code**: `200 OK`  \n**Content-Type**: `application/json`\n\n**Тело ответа**\n\n- **id**, **productId**, **sku**, **name**, **barcode**,  \n    **expectedQuantity** _(integer)_, **actualQuantity** _(integer)_,  \n    **status** = `counted`, **placementCartId** _(string, optional)_.\n    \n\n**Пример**\n\n``` json\n{\n  \"id\": \"item-000\",\n  \"productId\": \"EXT-000\",\n  \"sku\": \"PROD-000\",\n  \"name\": \"Test Item 0\",\n  \"barcode\": \"4607123456780\",\n  \"expectedQuantity\": 10,\n  \"actualQuantity\": 8,\n  \"status\": \"counted\",\n  \"placementCartId\": \"60d21b4667d0d8992e610c86\"\n}\n\n ```\n\n### JSON Schema ответа\n\n``` json\n{\n  \"type\": \"object\",\n  \"required\": [\"id\", \"sku\", \"name\", \"barcode\", \"expectedQuantity\", \"actualQuantity\", \"status\"],\n  \"properties\": {\n    \"id\": { \"type\": \"string\" },\n    \"productId\": { \"type\": \"string\" },\n    \"sku\": { \"type\": \"string\" },\n    \"name\": { \"type\": \"string\" },\n    \"barcode\": { \"type\": \"string\" },\n    \"expectedQuantity\": { \"type\": \"integer\" },\n    \"actualQuantity\": { \"type\": \"integer\" },\n    \"status\": { \"type\": \"string\", \"enum\": [\"counted\"] },\n    \"placementCartId\": { \"type\": \"string\" }\n  }\n}\n\n ```\n\n### Ошибки\n\n- `404 Not Found` — не найдены накладная/позиция/тележка.\n    \n- `400 Bad Request` — неверные данные.\n    \n- `500 Internal Server Error`."
+			},
+			"response": [
+				{
+					"name": "Количество товара успешно зафиксировано",
+					"originalRequest": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer <token>",
+								"description": "Added as a part of security scheme: bearer"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"actualQuantity\": 8,\n  \"placementCartId\": \"60d21b4667d0d8992e610c86\"\n}",
+							"options": {
+								"raw": {
+									"headerFamily": "json",
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/receiving/:invoiceId/items/:itemId/count",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"receiving",
+								":invoiceId",
+								"items",
+								":itemId",
+								"count"
+							],
+							"variable": [
+								{
+									"key": "invoiceId"
+								},
+								{
+									"key": "itemId"
+								}
+							]
+						}
+					},
+					"status": "OK",
+					"code": 200,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"cookie": [],
+					"body": "{\n  \"id\": \"string\",\n  \"productId\": \"string\",\n  \"sku\": \"string\",\n  \"name\": \"string\",\n  \"barcode\": \"string\",\n  \"expectedQuantity\": 4479.398533694348,\n  \"actualQuantity\": 567.1880757233749,\n  \"status\": \"counted\",\n  \"placementCartId\": \"string\"\n}"
+				},
+				{
+					"name": "Накладная, товар или тележка размещения не найдены",
+					"originalRequest": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer <token>",
+								"description": "Added as a part of security scheme: bearer"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"actualQuantity\": 8,\n  \"placementCartId\": \"60d21b4667d0d8992e610c86\"\n}",
+							"options": {
+								"raw": {
+									"headerFamily": "json",
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/receiving/:invoiceId/items/:itemId/count",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"receiving",
+								":invoiceId",
+								"items",
+								":itemId",
+								"count"
+							],
+							"variable": [
+								{
+									"key": "invoiceId"
+								},
+								{
+									"key": "itemId"
+								}
+							]
+						}
+					},
+					"status": "Not Found",
+					"code": 404,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"cookie": [],
+					"body": "{\n  \"message\": \"Ошибка валидации данных\",\n  \"error\": \"Location not found\",\n  \"code\": \"VALIDATION_ERROR\"\n}"
+				},
+				{
+					"name": "Ошибка сервера",
+					"originalRequest": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer <token>",
+								"description": "Added as a part of security scheme: bearer"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"actualQuantity\": 8,\n  \"placementCartId\": \"60d21b4667d0d8992e610c86\"\n}",
+							"options": {
+								"raw": {
+									"headerFamily": "json",
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/receiving/:invoiceId/items/:itemId/count",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"receiving",
+								":invoiceId",
+								"items",
+								":itemId",
+								"count"
+							],
+							"variable": [
+								{
+									"key": "invoiceId"
+								},
+								{
+									"key": "itemId"
+								}
+							]
+						}
+					},
+					"status": "Internal Server Error",
+					"code": 500,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"cookie": [],
+					"body": "{\n  \"message\": \"Ошибка валидации данных\",\n  \"error\": \"Location not found\",\n  \"code\": \"VALIDATION_ERROR\"\n}"
+				}
+			]
+		},
+		{
+			"name": "Завершить приёмку накладной",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"let response = pm.response.json();",
+							"",
+							"// Tests",
+							"// Test 1. Status code",
+							"pm.test(\"Status code is 200 or 201\", function() {",
+							"    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+							"});",
+							"",
+							"// Test 2. Status is accepted or accepted_with_discrepancies",
+							"pm.test(\"Status is accepted_with_discrepancies or accepted\", function () {",
+							"    pm.expect(response.status).to.be.oneOf([\"accepted\", \"accepted_with_discrepancies\"]);",
+							"});",
+							"console.log(`Статус накладной: ${response.status}`)"
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				},
+				{
+					"listen": "prerequest",
+					"script": {
+						"exec": [
+							""
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				}
+			],
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "{{bearerToken}}",
+							"type": "string"
+						}
+					]
+				},
+				"method": "POST",
+				"header": [
+					{
+						"key": "Accept",
+						"value": "application/json"
+					}
+				],
+				"url": {
+					"raw": "{{baseUrl}}/receiving/:invoiceId/complete",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"receiving",
+						":invoiceId",
+						"complete"
+					],
+					"variable": [
+						{
+							"key": "invoiceId",
+							"value": "{{invoiceId}}",
+							"description": "(Required) ID накладной"
+						}
+					]
+				},
+				"description": "## ✅ Receiving Complete API — завершение приёмки накладной\n\nЭндпоинт `/receiving/:invoiceId/complete` завершает процесс приёмки накладной и фиксирует итоговый статус. После успешного вызова накладная переводится в финальное состояние, позиции не редактируются.\n\n### Request\n\n**Method**: `POST`  \n**URL**: `{{baseUrl}}/receiving/:invoiceId/complete`  \n**Headers**: `Authorization: Bearer {{bearerToken}}`, `Accept: application/json`\n\n### Параметры пути\n- **invoiceId** *(string, required)* — ID накладной.\n\n### Тело запроса\nТело отсутствует. Валидация выполняется по `invoiceId` и текущему состоянию накладной.\n\n### Response\n\n**Status Code**: `200 OK`  \n**Content-Type**: `application/json`\n\n**Тело ответа** — объект накладной с итоговым статусом:\n- **_id**, **invoiceNumber**, **barcode**, **status** *(например, `completed`)*, **items**[] с финальными количествами.\n\n**Пример**\n```json\n{\n  \"_id\": \"60d21b4667d0d8992e610c85\",\n  \"invoiceNumber\": \"INV-12345\",\n  \"barcode\": \"4607123456780\",\n  \"status\": \"completed\",\n  \"items\": [\n    {\n      \"id\": \"item-001\",\n      \"productId\": \"EXT-001\",\n      \"sku\": \"PROD-001\",\n      \"name\": \"Смартфон XYZ\",\n      \"barcode\": \"4607123456789\",\n      \"expectedQuantity\": 10,\n      \"actualQuantity\": 8,\n      \"placedQuantity\": 8,\n      \"status\": \"placed\",\n      \"placementCartId\": \"60d21b4667d0d8992e610c86\"\n    }\n  ],\n  \"createdAt\": \"2025-03-10T10:00:00Z\"\n}\n```\n\n### JSON Schema ответа\n```json\n{\n  \"type\": \"object\",\n  \"required\": [\"_id\", \"invoiceNumber\", \"barcode\", \"status\", \"items\"],\n  \"properties\": {\n    \"_id\": { \"type\": \"string\" },\n    \"invoiceNumber\": { \"type\": \"string\" },\n    \"barcode\": { \"type\": \"string\" },\n    \"status\": { \"type\": \"string\", \"enum\": [\"completed\", \"cancelled\"] },\n    \"items\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"object\",\n        \"required\": [\"id\", \"sku\", \"barcode\", \"expectedQuantity\", \"actualQuantity\", \"status\"],\n        \"properties\": {\n          \"id\": { \"type\": \"string\" },\n          \"productId\": { \"type\": \"string\" },\n          \"sku\": { \"type\": \"string\" },\n          \"name\": { \"type\": \"string\" },\n          \"barcode\": { \"type\": \"string\" },\n          \"expectedQuantity\": { \"type\": \"integer\" },\n          \"actualQuantity\": { \"type\": \"integer\" },\n          \"placedQuantity\": { \"type\": \"integer\" },\n          \"status\": { \"type\": \"string\", \"enum\": [\"pending\", \"scanned\", \"counted\", \"placed\"] },\n          \"placementCartId\": { \"type\": \"string\" }\n        }\n      }\n    },\n    \"createdAt\": { \"type\": \"string\" }\n  }\n}\n```\n\n### Ошибки\n- `400 Bad Request` — накладная в неверном состоянии для завершения.  \n- `404 Not Found` — накладная не найдена.  \n- `500 Internal Server Error`."
+			},
+			"response": [
+				{
+					"name": "Приёмка накладной успешно завершена",
+					"originalRequest": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer <token>",
+								"description": "Added as a part of security scheme: bearer"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/receiving/:invoiceId/complete",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"receiving",
+								":invoiceId",
+								"complete"
+							],
+							"variable": [
+								{
+									"key": "invoiceId"
+								}
+							]
+						}
+					},
+					"status": "OK",
+					"code": 200,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"cookie": [],
+					"body": "{\n  \"_id\": \"60d21b4667d0d8992e610c85\",\n  \"invoiceNumber\": \"INV-12345\",\n  \"barcode\": \"4607123456780\",\n  \"status\": \"new\",\n  \"items\": [\n    {\n      \"id\": \"item-001\",\n      \"productId\": \"EXT-001\",\n      \"sku\": \"PROD-001\",\n      \"name\": \"Смартфон XYZ\",\n      \"barcode\": \"4607123456789\",\n      \"expectedQuantity\": 10,\n      \"actualQuantity\": 8,\n      \"placedQuantity\": 0,\n      \"status\": \"pending\",\n      \"placementCartId\": \"60d21b4667d0d8992e610c86\"\n    },\n    {\n      \"id\": \"item-001\",\n      \"productId\": \"EXT-001\",\n      \"sku\": \"PROD-001\",\n      \"name\": \"Смартфон XYZ\",\n      \"barcode\": \"4607123456789\",\n      \"expectedQuantity\": 10,\n      \"actualQuantity\": 8,\n      \"placedQuantity\": 0,\n      \"status\": \"pending\",\n      \"placementCartId\": \"60d21b4667d0d8992e610c86\"\n    }\n  ],\n  \"createdAt\": \"2025-03-10T10:00:00Z\"\n}"
+				},
+				{
+					"name": "Не все товары посчитаны или другая ошибка при завершении",
+					"originalRequest": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer <token>",
+								"description": "Added as a part of security scheme: bearer"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/receiving/:invoiceId/complete",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"receiving",
+								":invoiceId",
+								"complete"
+							],
+							"variable": [
+								{
+									"key": "invoiceId"
+								}
+							]
+						}
+					},
+					"status": "Bad Request",
+					"code": 400,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"cookie": [],
+					"body": "{\n  \"message\": \"Ошибка валидации данных\",\n  \"error\": \"Location not found\",\n  \"code\": \"VALIDATION_ERROR\"\n}"
+				},
+				{
+					"name": "Накладная не найдена",
+					"originalRequest": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer <token>",
+								"description": "Added as a part of security scheme: bearer"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/receiving/:invoiceId/complete",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"receiving",
+								":invoiceId",
+								"complete"
+							],
+							"variable": [
+								{
+									"key": "invoiceId"
+								}
+							]
+						}
+					},
+					"status": "Not Found",
+					"code": 404,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"cookie": [],
+					"body": "{\n  \"message\": \"Ошибка валидации данных\",\n  \"error\": \"Location not found\",\n  \"code\": \"VALIDATION_ERROR\"\n}"
+				},
+				{
+					"name": "Ошибка сервера",
+					"originalRequest": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer <token>",
+								"description": "Added as a part of security scheme: bearer"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/receiving/:invoiceId/complete",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"receiving",
+								":invoiceId",
+								"complete"
+							],
+							"variable": [
+								{
+									"key": "invoiceId"
+								}
+							]
+						}
+					},
+					"status": "Internal Server Error",
+					"code": 500,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"cookie": [],
+					"body": "{\n  \"message\": \"Ошибка валидации данных\",\n  \"error\": \"Location not found\",\n  \"code\": \"VALIDATION_ERROR\"\n}"
+				}
+			]
+		},
+		{
+			"name": "Создать новую ячейку 1",
+			"event": [
+				{
+					"listen": "prerequest",
+					"script": {
+						"exec": [
+							"// Тип объекта ячейки для референса перед глазами",
+							"// {",
+							"//   \"barcode\": \"LOC-A01-B02-C03\",",
+							"//   \"zone\": \"A\",",
+							"//   \"aisle\": \"01\",",
+							"//   \"rack\": \"B\",",
+							"//   \"level\": \"02\",",
+							"//   \"position\": \"C03\",",
+							"//   \"capacity\": 100",
+							"// }",
+							"",
+							"// Генерируем новую ячейку",
+							"// Хардкодим основные параметры",
+							"let zone = \"A\";",
+							"let rack = \"B\";",
+							"let capacity = 100;",
+							"",
+							"let items = [];",
+							"",
+							"// В цикле создаем массив объектов с параметрами ячеек",
+							"for (let i = 1; i <= 2; i++) {",
+							"    let timestamp = new Date().getTime();",
+							"    let aisle = String(i).padStart(2, \"0\");         // \"01\",\"02\" ",
+							"    let level = String(i).padStart(2, \"0\");         // \"01\",\"02\"",
+							"    let position = `C${String(i).padStart(2, \"0\")}`;// \"C01\",\"C02\"",
+							"    let barcode = `LOC-A${aisle}-B${level}-${position}-${timestamp}`;",
+							"",
+							"  items.push({",
+							"    barcode,",
+							"    zone,",
+							"    aisle,",
+							"    rack,",
+							"    level,",
+							"    position,",
+							"    capacity",
+							"  });",
+							"  // Логгируем barcode созданных ячеек",
+							"  console.log(`Barcode созданной ячейки: ${barcode}`)",
+							"}",
+							"",
+							"// Сохраняем в переменную коллекции созданные ячейки",
+							"console.log(items)",
+							"pm.collectionVariables.set(\"newLocations\", JSON.stringify(items));",
+							"",
+							"// Сохраняем объект первой ячейки в локальную переменную",
+							"let first = items[0];",
+							"pm.variables.set(\"location_1\", JSON.stringify(first));"
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				},
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"let response = pm.response.json();",
+							"",
+							"// Tests",
+							"// Test 1. Status code",
+							"pm.test(\"Status code is 200 or 201\", function() {",
+							"    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+							"});",
+							"",
+							"// Test 2. New location status is avilable",
+							"pm.test(\"New location status is available\", function () {",
+							"    pm.expect(response.status).to.eql(\"available\");",
+							"});",
+							"",
+							"// Test 3. Used capacity is 0 [new location]",
+							"pm.test(\"Used capacity is 0\", function () {",
+							"    pm.expect(response.usedCapacity).to.eql(0);",
+							"});",
+							"",
+							"// Test 4. Location _id is not null",
+							"pm.test(\"Location _id is not null\", function () {",
+							"    pm.expect(response._id).to.not.eql(null);",
+							"});",
+							"",
+							"// Сохраняем _id в переменную коллекции",
+							"pm.collectionVariables.set(\"location1_id\", response._id);",
+							"// Логируем id новой ячейки",
+							"console.log(\"New location _id: \" + response._id);",
+							""
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				}
+			],
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "{{bearerToken}}",
+							"type": "string"
+						}
+					]
+				},
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "Accept",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{{location_1}}",
+					"options": {
+						"raw": {
+							"headerFamily": "json",
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{baseUrl}}/locations",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"locations"
+					]
+				},
+				"description": "## 🗂️ Locations API — создание новой ячейки\n\nЭндпоинт `/locations` создаёт новую складскую ячейку с параметрами адреса хранения.\n\n### Request\n\n**Method**: `POST`  \n**URL**: `{{baseUrl}}/locations`  \n**Headers**: `Authorization: Bearer {{bearerToken}}`, `Content-Type: application/json`\n\n### Тело запроса\n- **barcode** *(string, required)* — код ячейки, например `LOC-A01-01-01`.  \n- **zone** *(string, required)* — зона, пример `A`.  \n- **aisle** *(string, required)* — ряд, пример `01`.  \n- **rack** *(string, required)* — стеллаж, пример `01`.  \n- **level** *(string, required)* — уровень, пример `01`.  \n- **position** *(string, required)* — позиция, пример `01`.  \n- **capacity** *(integer, required)* — вместимость ячейки.\n\n**Пример**\n```json\n{\n  \"barcode\": \"LOC-A01-01-01\",\n  \"zone\": \"A\",\n  \"aisle\": \"01\",\n  \"rack\": \"01\",\n  \"level\": \"01\",\n  \"position\": \"01\",\n  \"capacity\": 100\n}\n```\n\n### Response\n\n**Status Code**: `201 Created`  \n**Content-Type**: `application/json`\n\n**Тело ответа**\n- **_id** *(string)* — ID ячейки.  \n- **barcode**, **zone**, **aisle**, **rack**, **level**, **position**.  \n- **status** *(string)* — статус (`available`, `blocked` и т.д.).  \n- **capacity** *(integer)* — общая вместимость.  \n- **usedCapacity** *(integer)* — занято сейчас.  \n- **createdAt** *(string, ISO8601)* — время создания.\n\n**Пример**\n```json\n{\n  \"_id\": \"60d21b4667d0d8992e610c85\",\n  \"barcode\": \"LOC-A01-01-01\",\n  \"zone\": \"A\",\n  \"aisle\": \"01\",\n  \"rack\": \"01\",\n  \"level\": \"01\",\n  \"position\": \"01\",\n  \"status\": \"available\",\n  \"capacity\": 100,\n  \"usedCapacity\": 30,\n  \"createdAt\": \"2025-03-01T10:00:00Z\"\n}\n```\n\n### JSON Schema ответа\n```json\n{\n  \"type\": \"object\",\n  \"required\": [\"_id\", \"barcode\", \"zone\", \"aisle\", \"rack\", \"level\", \"position\", \"status\", \"capacity\"],\n  \"properties\": {\n    \"_id\": { \"type\": \"string\" },\n    \"barcode\": { \"type\": \"string\" },\n    \"zone\": { \"type\": \"string\" },\n    \"aisle\": { \"type\": \"string\" },\n    \"rack\": { \"type\": \"string\" },\n    \"level\": { \"type\": \"string\" },\n    \"position\": { \"type\": \"string\" },\n    \"status\": { \"type\": \"string\", \"enum\": [\"available\", \"blocked\"] },\n    \"capacity\": { \"type\": \"integer\" },\n    \"usedCapacity\": { \"type\": \"integer\" },\n    \"createdAt\": { \"type\": \"string\" }\n  }\n}\n```\n\n### Ошибки\n- `400 Bad Request` — ошибка валидации адреса или формата штрихкода.  \n- `409 Conflict` — ячейка с таким `barcode` уже существует.  \n- `500 Internal Server Error`."
+			},
+			"response": [
+				{
+					"name": "Ячейка успешно создана",
+					"originalRequest": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer <token>",
+								"description": "Added as a part of security scheme: bearer"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"barcode\": \"LOC-A01-B02-C03\",\n  \"zone\": \"A\",\n  \"aisle\": \"01\",\n  \"rack\": \"B\",\n  \"level\": \"02\",\n  \"position\": \"C03\",\n  \"capacity\": 100\n}",
+							"options": {
+								"raw": {
+									"headerFamily": "json",
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/locations",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"locations"
+							]
+						}
+					},
+					"status": "Created",
+					"code": 201,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"cookie": [],
+					"body": "{\n  \"_id\": \"60d21b4667d0d8992e610c85\",\n  \"barcode\": \"LOC-A01-01-01\",\n  \"zone\": \"A\",\n  \"aisle\": \"01\",\n  \"rack\": \"01\",\n  \"level\": \"01\",\n  \"position\": \"01\",\n  \"status\": \"available\",\n  \"capacity\": 100,\n  \"usedCapacity\": 30,\n  \"createdAt\": \"2025-03-01T10:00:00Z\"\n}"
+				},
+				{
+					"name": "Неверные данные запроса",
+					"originalRequest": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer <token>",
+								"description": "Added as a part of security scheme: bearer"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"barcode\": \"LOC-A01-B02-C03\",\n  \"zone\": \"A\",\n  \"aisle\": \"01\",\n  \"rack\": \"B\",\n  \"level\": \"02\",\n  \"position\": \"C03\",\n  \"capacity\": 100\n}",
+							"options": {
+								"raw": {
+									"headerFamily": "json",
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/locations",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"locations"
+							]
+						}
+					},
+					"status": "Bad Request",
+					"code": 400,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"cookie": [],
+					"body": "{\n  \"message\": \"Ошибка валидации данных\",\n  \"error\": \"Location not found\",\n  \"code\": \"VALIDATION_ERROR\"\n}"
+				},
+				{
+					"name": "Ошибка сервера",
+					"originalRequest": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer <token>",
+								"description": "Added as a part of security scheme: bearer"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"barcode\": \"LOC-A01-B02-C03\",\n  \"zone\": \"A\",\n  \"aisle\": \"01\",\n  \"rack\": \"B\",\n  \"level\": \"02\",\n  \"position\": \"C03\",\n  \"capacity\": 100\n}",
+							"options": {
+								"raw": {
+									"headerFamily": "json",
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/locations",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"locations"
+							]
+						}
+					},
+					"status": "Internal Server Error",
+					"code": 500,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"cookie": [],
+					"body": "{\n  \"message\": \"Ошибка валидации данных\",\n  \"error\": \"Location not found\",\n  \"code\": \"VALIDATION_ERROR\"\n}"
+				}
+			]
+		},
+		{
+			"name": "Создать новую ячейку 2",
+			"event": [
+				{
+					"listen": "prerequest",
+					"script": {
+						"exec": [
+							"// Тип объекта ячейки для референса перед глазами",
+							"// {",
+							"//   \"barcode\": \"LOC-A01-B02-C03\",",
+							"//   \"zone\": \"A\",",
+							"//   \"aisle\": \"01\",",
+							"//   \"rack\": \"B\",",
+							"//   \"level\": \"02\",",
+							"//   \"position\": \"C03\",",
+							"//   \"capacity\": 100",
+							"// }",
+							"",
+							"// Достаем массив созданных в предыдущем запросе ячеек",
+							"let newLocations = pm.collectionVariables.get(\"newLocations\");",
+							"newLocations = JSON.parse(newLocations);",
+							"",
+							"// Сохраняем объект первой ячейки в локальную переменную",
+							"let location_2 = newLocations[1];",
+							"pm.variables.set(\"location_2\", JSON.stringify(location_2));"
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				},
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"let response = pm.response.json();",
+							"",
+							"// Tests",
+							"// Test 1. Status code",
+							"pm.test(\"Status code is 200 or 201\", function() {",
+							"    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+							"});",
+							"",
+							"// Test 2. New location status is available",
+							"pm.test(\"New location status is available\", function () {",
+							"    pm.expect(response.status).to.eql(\"available\");",
+							"});",
+							"",
+							"// Test 3. Used capacity is 0 [new location]",
+							"pm.test(\"Used capacity is 0\", function () {",
+							"    pm.expect(response.usedCapacity).to.eql(0);",
+							"});",
+							"",
+							"// Test 4. Location _id is not null",
+							"pm.test(\"Location _id is not null\", function () {",
+							"    pm.expect(response._id).to.not.eql(null);",
+							"});",
+							"",
+							"// Сохраняем _id в переменную коллекции",
+							"pm.collectionVariables.set(\"location2_id\", response._id);",
+							"// Логируем id новой ячейки",
+							"console.log(\"New location _id: \" + response._id);",
+							""
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				}
+			],
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "{{bearerToken}}",
+							"type": "string"
+						}
+					]
+				},
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "Accept",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{{location_2}}",
+					"options": {
+						"raw": {
+							"headerFamily": "json",
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{baseUrl}}/locations",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"locations"
+					]
+				},
+				"description": "## 🗂️ Locations API — создание новой ячейки\n\nЭндпоинт `/locations` создаёт новую складскую ячейку с параметрами адреса хранения.\n\n### Request\n\n**Method**: `POST`  \n**URL**: `{{baseUrl}}/locations`  \n**Headers**: `Authorization: Bearer {{bearerToken}}`, `Content-Type: application/json`\n\n### Тело запроса\n- **barcode** *(string, required)* — код ячейки, например `LOC-A01-01-01`.  \n- **zone** *(string, required)* — зона, пример `A`.  \n- **aisle** *(string, required)* — ряд, пример `01`.  \n- **rack** *(string, required)* — стеллаж, пример `01`.  \n- **level** *(string, required)* — уровень, пример `01`.  \n- **position** *(string, required)* — позиция, пример `01`.  \n- **capacity** *(integer, required)* — вместимость ячейки.\n\n**Пример**\n```json\n{\n  \"barcode\": \"LOC-A01-01-01\",\n  \"zone\": \"A\",\n  \"aisle\": \"01\",\n  \"rack\": \"01\",\n  \"level\": \"01\",\n  \"position\": \"01\",\n  \"capacity\": 100\n}\n```\n\n### Response\n\n**Status Code**: `201 Created`  \n**Content-Type**: `application/json`\n\n**Тело ответа**\n- **_id** *(string)* — ID ячейки.  \n- **barcode**, **zone**, **aisle**, **rack**, **level**, **position**.  \n- **status** *(string)* — статус (`available`, `blocked` и т.д.).  \n- **capacity** *(integer)* — общая вместимость.  \n- **usedCapacity** *(integer)* — занято сейчас.  \n- **createdAt** *(string, ISO8601)* — время создания.\n\n**Пример**\n```json\n{\n  \"_id\": \"60d21b4667d0d8992e610c85\",\n  \"barcode\": \"LOC-A01-01-01\",\n  \"zone\": \"A\",\n  \"aisle\": \"01\",\n  \"rack\": \"01\",\n  \"level\": \"01\",\n  \"position\": \"01\",\n  \"status\": \"available\",\n  \"capacity\": 100,\n  \"usedCapacity\": 30,\n  \"createdAt\": \"2025-03-01T10:00:00Z\"\n}\n```\n\n### JSON Schema ответа\n```json\n{\n  \"type\": \"object\",\n  \"required\": [\"_id\", \"barcode\", \"zone\", \"aisle\", \"rack\", \"level\", \"position\", \"status\", \"capacity\"],\n  \"properties\": {\n    \"_id\": { \"type\": \"string\" },\n    \"barcode\": { \"type\": \"string\" },\n    \"zone\": { \"type\": \"string\" },\n    \"aisle\": { \"type\": \"string\" },\n    \"rack\": { \"type\": \"string\" },\n    \"level\": { \"type\": \"string\" },\n    \"position\": { \"type\": \"string\" },\n    \"status\": { \"type\": \"string\", \"enum\": [\"available\", \"blocked\"] },\n    \"capacity\": { \"type\": \"integer\" },\n    \"usedCapacity\": { \"type\": \"integer\" },\n    \"createdAt\": { \"type\": \"string\" }\n  }\n}\n```\n\n### Ошибки\n- `400 Bad Request` — ошибка валидации адреса или формата штрихкода.  \n- `409 Conflict` — ячейка с таким `barcode` уже существует.  \n- `500 Internal Server Error`."
+			},
+			"response": [
+				{
+					"name": "Ячейка успешно создана",
+					"originalRequest": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer <token>",
+								"description": "Added as a part of security scheme: bearer"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"barcode\": \"LOC-A01-B02-C03\",\n  \"zone\": \"A\",\n  \"aisle\": \"01\",\n  \"rack\": \"B\",\n  \"level\": \"02\",\n  \"position\": \"C03\",\n  \"capacity\": 100\n}",
+							"options": {
+								"raw": {
+									"headerFamily": "json",
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/locations",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"locations"
+							]
+						}
+					},
+					"status": "Created",
+					"code": 201,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"cookie": [],
+					"body": "{\n  \"_id\": \"60d21b4667d0d8992e610c85\",\n  \"barcode\": \"LOC-A01-01-01\",\n  \"zone\": \"A\",\n  \"aisle\": \"01\",\n  \"rack\": \"01\",\n  \"level\": \"01\",\n  \"position\": \"01\",\n  \"status\": \"available\",\n  \"capacity\": 100,\n  \"usedCapacity\": 30,\n  \"createdAt\": \"2025-03-01T10:00:00Z\"\n}"
+				},
+				{
+					"name": "Неверные данные запроса",
+					"originalRequest": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer <token>",
+								"description": "Added as a part of security scheme: bearer"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"barcode\": \"LOC-A01-B02-C03\",\n  \"zone\": \"A\",\n  \"aisle\": \"01\",\n  \"rack\": \"B\",\n  \"level\": \"02\",\n  \"position\": \"C03\",\n  \"capacity\": 100\n}",
+							"options": {
+								"raw": {
+									"headerFamily": "json",
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/locations",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"locations"
+							]
+						}
+					},
+					"status": "Bad Request",
+					"code": 400,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"cookie": [],
+					"body": "{\n  \"message\": \"Ошибка валидации данных\",\n  \"error\": \"Location not found\",\n  \"code\": \"VALIDATION_ERROR\"\n}"
+				},
+				{
+					"name": "Ошибка сервера",
+					"originalRequest": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer <token>",
+								"description": "Added as a part of security scheme: bearer"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"barcode\": \"LOC-A01-B02-C03\",\n  \"zone\": \"A\",\n  \"aisle\": \"01\",\n  \"rack\": \"B\",\n  \"level\": \"02\",\n  \"position\": \"C03\",\n  \"capacity\": 100\n}",
+							"options": {
+								"raw": {
+									"headerFamily": "json",
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/locations",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"locations"
+							]
+						}
+					},
+					"status": "Internal Server Error",
+					"code": 500,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"cookie": [],
+					"body": "{\n  \"message\": \"Ошибка валидации данных\",\n  \"error\": \"Location not found\",\n  \"code\": \"VALIDATION_ERROR\"\n}"
+				}
+			]
+		},
+		{
+			"name": "Получить тележку размещения по ID",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"let response = pm.response.json();",
+							"",
+							"// Tests",
+							"// Test 1. Status code",
+							"pm.test(\"Status code is 200 or 201\", function() {",
+							"    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+							"});"
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				}
+			],
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "{{bearerToken}}",
+							"type": "string"
+						}
+					]
+				},
+				"method": "GET",
+				"header": [
+					{
+						"key": "Accept",
+						"value": "application/json"
+					}
+				],
+				"url": {
+					"raw": "{{baseUrl}}/placement-carts/:id",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"placement-carts",
+						":id"
+					],
+					"variable": [
+						{
+							"key": "id",
+							"value": "{{cartId}}",
+							"description": "(Required) ID тележки размещения"
+						}
+					]
+				},
+				"description": "## 🛒 Placement Cart API — получить тележку по ID\n\nЭндпоинт `GET /placement-carts/:id` возвращает подробную информацию о тележке размещения.\n\n### Request\n\n**Method**: `GET`  \n**URL**: `{{baseUrl}}/placement-carts/:id`  \n**Headers**: `Authorization: Bearer {{bearerToken}}`, `Accept: application/json`\n\n### Параметры пути\n\n- **id** _(string, required)_ — идентификатор тележки.\n    \n\n### Response\n\n**Status Code**: `200 OK`  \n**Content-Type**: `application/json`\n\n**Тело ответа**\n\n- **_id** _(string)_ — ID тележки.\n    \n- **status** _(string)_ — `free` | `in_use` | `closed`.\n    \n- **items** _(array)_ — позиции, привязанные к тележке:\n    - **invoiceId** _(string)_ — ID накладной.\n        \n    - **itemId** _(string)_ — ID позиции.\n        \n    - **sku** _(string)_ — артикул.\n        \n    - **quantity** _(integer)_ — ожидаемое.\n        \n    - **placedQuantity** _(integer)_ — уже размещено.\n        \n- **createdAt** _(string, ISO8601)_ — время создания.\n    \n\n**Пример**\n\n``` json\n{\n  \"_id\": \"60d21b4667d0d8992e610c85\",\n  \"status\": \"free\",\n  \"items\": [\n    {\n      \"invoiceId\": \"60d21b4667d0d8992e610c86\",\n      \"itemId\": \"item-001\",\n      \"sku\": \"PROD-001\",\n      \"quantity\": 10,\n      \"placedQuantity\": 5\n    }\n  ],\n  \"createdAt\": \"2025-03-10T10:00:00Z\"\n}\n\n ```\n\n### JSON Schema ответа\n\n``` json\n{\n  \"type\": \"object\",\n  \"required\": [\"_id\", \"status\", \"items\"],\n  \"properties\": {\n    \"_id\": { \"type\": \"string\" },\n    \"status\": { \"type\": \"string\", \"enum\": [\"free\", \"in_use\", \"closed\"] },\n    \"items\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"object\",\n        \"required\": [\"invoiceId\", \"itemId\", \"sku\", \"quantity\"],\n        \"properties\": {\n          \"invoiceId\": { \"type\": \"string\" },\n          \"itemId\": { \"type\": \"string\" },\n          \"sku\": { \"type\": \"string\" },\n          \"quantity\": { \"type\": \"integer\" },\n          \"placedQuantity\": { \"type\": \"integer\" }\n        }\n      }\n    },\n    \"createdAt\": { \"type\": \"string\" }\n  }\n}\n\n ```\n\n### Ошибки\n\n- `404 Not Found` — тележка не найдена.\n    \n- `500 Internal Server Error`."
+			},
+			"response": [
+				{
+					"name": "Успешное получение информации о тележке размещения",
+					"originalRequest": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer <token>",
+								"description": "Added as a part of security scheme: bearer"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/placement-carts/:id",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"placement-carts",
+								":id"
+							],
+							"variable": [
+								{
+									"key": "id"
+								}
+							]
+						}
+					},
+					"status": "OK",
+					"code": 200,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"cookie": [],
+					"body": "{\n  \"_id\": \"60d21b4667d0d8992e610c85\",\n  \"status\": \"free\",\n  \"items\": [\n    {\n      \"invoiceId\": \"60d21b4667d0d8992e610c86\",\n      \"itemId\": \"item-001\",\n      \"sku\": \"PROD-001\",\n      \"quantity\": 10,\n      \"placedQuantity\": 5\n    },\n    {\n      \"invoiceId\": \"60d21b4667d0d8992e610c86\",\n      \"itemId\": \"item-001\",\n      \"sku\": \"PROD-001\",\n      \"quantity\": 10,\n      \"placedQuantity\": 5\n    }\n  ],\n  \"createdAt\": \"2025-03-10T10:00:00Z\"\n}"
+				},
+				{
+					"name": "Тележка размещения не найдена",
+					"originalRequest": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer <token>",
+								"description": "Added as a part of security scheme: bearer"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/placement-carts/:id",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"placement-carts",
+								":id"
+							],
+							"variable": [
+								{
+									"key": "id"
+								}
+							]
+						}
+					},
+					"status": "Not Found",
+					"code": 404,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"cookie": [],
+					"body": "{\n  \"message\": \"Ошибка валидации данных\",\n  \"error\": \"Location not found\",\n  \"code\": \"VALIDATION_ERROR\"\n}"
+				},
+				{
+					"name": "Ошибка сервера",
+					"originalRequest": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer <token>",
+								"description": "Added as a part of security scheme: bearer"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/placement-carts/:id",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"placement-carts",
+								":id"
+							],
+							"variable": [
+								{
+									"key": "id"
+								}
+							]
+						}
+					},
+					"status": "Internal Server Error",
+					"code": 500,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"cookie": [],
+					"body": "{\n  \"message\": \"Ошибка валидации данных\",\n  \"error\": \"Location not found\",\n  \"code\": \"VALIDATION_ERROR\"\n}"
+				}
+			]
+		},
+		{
+			"name": "Размещение товара 1 на склад",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"let response = pm.response.json();",
+							"",
+							"// Tests",
+							"// Test 1. Status code",
+							"pm.test(\"Status code is 200 or 201\", function() {",
+							"    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+							"});",
+							"",
+							"// Test 2. Location used capacity is the same as inventory quantity",
+							"pm.test(\"Location used capacity is the same as inventory quantity\", function () {",
+							"    pm.expect(response.location.usedCapacity).to.equal(response.inventory.quantity);",
+							"});"
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				},
+				{
+					"listen": "prerequest",
+					"script": {
+						"exec": [
+							"// Получаем и сохраняем в локальную переменную актуальное кол-во продукта",
+							"let actualItem_1 = JSON.parse(pm.collectionVariables.get(\"actualItem_1\"));",
+							"console.log(\"Объект:\", actualItem_1);",
+							"",
+							"// Достаём поле",
+							"let itemQuantity = actualItem_1.actualQuantity;",
+							"",
+							"// Сохраняем в локальную переменную",
+							"pm.variables.set(\"actualQuantity\", itemQuantity);",
+							"console.log(\"actualQuantity:\", itemQuantity);"
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				}
+			],
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "{{bearerToken}}",
+							"type": "string"
+						}
+					]
+				},
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "Accept",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"locationId\": \"{{location1_id}}\",\n  \"quantity\": {{actualQuantity}}\n}",
+					"options": {
+						"raw": {
+							"headerFamily": "json",
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{baseUrl}}/inventory/invoices/:invoiceId/items/:itemId/place",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"inventory",
+						"invoices",
+						":invoiceId",
+						"items",
+						":itemId",
+						"place"
+					],
+					"variable": [
+						{
+							"key": "invoiceId",
+							"value": "{{invoiceId}}",
+							"description": "(Required) ID накладной"
+						},
+						{
+							"key": "itemId",
+							"value": "{{itemId_0}}",
+							"description": "(Required) ID товара в накладной"
+						}
+					]
+				},
+				"description": "## 🧩 Place Item API — размещение товара на складе\n\nЭндпоинт `/inventory/invoices/:invoiceId/items/:itemId/place` размещает количество товара из накладной в указанной ячейке.\n\n### Request\n\n**Method**: `POST`  \n**URL**: `{{baseUrl}}/inventory/invoices/:invoiceId/items/:itemId/place`  \n**Headers**: `Authorization: Bearer {{bearerToken}}`, `Content-Type: application/json`\n\n### Параметры пути\n- **invoiceId** *(string, required)* — ID накладной.  \n- **itemId** *(string, required)* — ID позиции накладной.\n\n### Тело запроса\n- **locationBarcode** *(string, required)* — штрихкод ячейки, куда размещаем.  \n- **quantity** *(integer, required)* — количество к размещению, `> 0` и `<= (actualQuantity - placedQuantity)`.  \n- **placementCartId** *(string, optional)* — ID тележки, если размещение выполняется из тележки.\n\n**Пример**\n```json\n{\n  \"locationBarcode\": \"LOC-A01-01-01\",\n  \"quantity\": 3,\n  \"placementCartId\": \"60d21b4667d0d8992e610c86\"\n}\n```\n\n### Response\n\n**Status Code**: `200 OK`  \n**Content-Type**: `application/json`\n\n**Тело ответа** — обновлённая информация по позиции:\n- **id**, **sku**, **barcode**, **expectedQuantity**, **actualQuantity**, **placedQuantity** (увеличено),  \n  **status** *(например, `placed` если размещено всё)*, **lastPlacement** *(object)*:\n  - **locationBarcode** *(string)* — ячейка.  \n  - **quantity** *(integer)* — размещено сейчас.  \n  - **timestamp** *(string, ISO8601)* — время операции.\n\n**Пример**\n```json\n{\n  \"id\": \"item-001\",\n  \"sku\": \"PROD-001\",\n  \"barcode\": \"4607123456789\",\n  \"expectedQuantity\": 10,\n  \"actualQuantity\": 8,\n  \"placedQuantity\": 8,\n  \"status\": \"placed\",\n  \"lastPlacement\": {\n    \"locationBarcode\": \"LOC-A01-01-01\",\n    \"quantity\": 3,\n    \"timestamp\": \"2025-03-10T10:05:00Z\"\n  }\n}\n```\n\n### JSON Schema ответа\n```json\n{\n  \"type\": \"object\",\n  \"required\": [\"id\", \"sku\", \"barcode\", \"expectedQuantity\", \"actualQuantity\", \"placedQuantity\", \"status\"],\n  \"properties\": {\n    \"id\": { \"type\": \"string\" },\n    \"sku\": { \"type\": \"string\" },\n    \"barcode\": { \"type\": \"string\" },\n    \"expectedQuantity\": { \"type\": \"integer\" },\n    \"actualQuantity\": { \"type\": \"integer\" },\n    \"placedQuantity\": { \"type\": \"integer\" },\n    \"status\": { \"type\": \"string\", \"enum\": [\"pending\", \"scanned\", \"counted\", \"placed\"] },\n    \"lastPlacement\": {\n      \"type\": \"object\",\n      \"required\": [\"locationBarcode\", \"quantity\"],\n      \"properties\": {\n        \"locationBarcode\": { \"type\": \"string\" },\n        \"quantity\": { \"type\": \"integer\" },\n        \"timestamp\": { \"type\": \"string\" }\n      }\n    }\n  }\n}\n```\n\n### Ошибки\n- `400 Bad Request` — количество превышает доступное к размещению или некорректная ячейка.  \n- `404 Not Found` — накладная/позиция/ячейка не найдены.  \n- `409 Conflict` — ячейка переполнена или заблокирована.  \n- `500 Internal Server Error`."
+			},
+			"response": [
+				{
+					"name": "Товар успешно размещен",
+					"originalRequest": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer <token>",
+								"description": "Added as a part of security scheme: bearer"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"locationId\": \"60d21b4667d0d8992e610c85\",\n  \"quantity\": 10\n}",
+							"options": {
+								"raw": {
+									"headerFamily": "json",
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/inventory/invoices/:invoiceId/items/:itemId/place",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"inventory",
+								"invoices",
+								":invoiceId",
+								"items",
+								":itemId",
+								"place"
+							],
+							"variable": [
+								{
+									"key": "invoiceId"
+								},
+								{
+									"key": "itemId"
+								}
+							]
+						}
+					},
+					"status": "OK",
+					"code": 200,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"cookie": [],
+					"body": "{\n  \"inventory\": {\n    \"sku\": \"string\",\n    \"quantity\": 100.09521725678594,\n    \"locationId\": \"string\"\n  },\n  \"location\": {\n    \"_id\": \"60d21b4667d0d8992e610c85\",\n    \"barcode\": \"LOC-A01-01-01\",\n    \"zone\": \"A\",\n    \"aisle\": \"01\",\n    \"rack\": \"01\",\n    \"level\": \"01\",\n    \"position\": \"01\",\n    \"status\": \"available\",\n    \"capacity\": 100,\n    \"usedCapacity\": 30,\n    \"createdAt\": \"2025-03-01T10:00:00Z\"\n  }\n}"
+				},
+				{
+					"name": "Неверные данные запроса",
+					"originalRequest": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer <token>",
+								"description": "Added as a part of security scheme: bearer"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"locationId\": \"60d21b4667d0d8992e610c85\",\n  \"quantity\": 10\n}",
+							"options": {
+								"raw": {
+									"headerFamily": "json",
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/inventory/invoices/:invoiceId/items/:itemId/place",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"inventory",
+								"invoices",
+								":invoiceId",
+								"items",
+								":itemId",
+								"place"
+							],
+							"variable": [
+								{
+									"key": "invoiceId"
+								},
+								{
+									"key": "itemId"
+								}
+							]
+						}
+					},
+					"status": "Bad Request",
+					"code": 400,
+					"_postman_previewlanguage": "text",
+					"header": [],
+					"cookie": [],
+					"body": ""
+				},
+				{
+					"name": "Накладная, товар или ячейка не найдены",
+					"originalRequest": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer <token>",
+								"description": "Added as a part of security scheme: bearer"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"locationId\": \"60d21b4667d0d8992e610c85\",\n  \"quantity\": 10\n}",
+							"options": {
+								"raw": {
+									"headerFamily": "json",
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/inventory/invoices/:invoiceId/items/:itemId/place",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"inventory",
+								"invoices",
+								":invoiceId",
+								"items",
+								":itemId",
+								"place"
+							],
+							"variable": [
+								{
+									"key": "invoiceId"
+								},
+								{
+									"key": "itemId"
+								}
+							]
+						}
+					},
+					"status": "Not Found",
+					"code": 404,
+					"_postman_previewlanguage": "text",
+					"header": [],
+					"cookie": [],
+					"body": ""
+				},
+				{
+					"name": "Ошибка сервера",
+					"originalRequest": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer <token>",
+								"description": "Added as a part of security scheme: bearer"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"locationId\": \"60d21b4667d0d8992e610c85\",\n  \"quantity\": 10\n}",
+							"options": {
+								"raw": {
+									"headerFamily": "json",
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/inventory/invoices/:invoiceId/items/:itemId/place",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"inventory",
+								"invoices",
+								":invoiceId",
+								"items",
+								":itemId",
+								"place"
+							],
+							"variable": [
+								{
+									"key": "invoiceId"
+								},
+								{
+									"key": "itemId"
+								}
+							]
+						}
+					},
+					"status": "Internal Server Error",
+					"code": 500,
+					"_postman_previewlanguage": "text",
+					"header": [],
+					"cookie": [],
+					"body": ""
+				}
+			]
+		},
+		{
+			"name": "Размещение товара 2 на склад",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"let response = pm.response.json();",
+							"",
+							"// Tests",
+							"// Test 1. Status code",
+							"pm.test(\"Status code is 200 or 201\", function() {",
+							"    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+							"});",
+							"",
+							"// Test 2. Location used capacity is the same as inventory quantity",
+							"pm.test(\"Location used capacity is the same as inventory quantity\", function () {",
+							"    pm.expect(response.location.usedCapacity).to.equal(response.inventory.quantity);",
+							"});"
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				},
+				{
+					"listen": "prerequest",
+					"script": {
+						"exec": [
+							"// Получаем и сохраняем в локальную переменную актуальное кол-во продукта",
+							"let actualItem_1 = JSON.parse(pm.collectionVariables.get(\"actualItem_1\"));",
+							"console.log(\"Объект:\", actualItem_1);",
+							"",
+							"// Достаём поле",
+							"let itemQuantity = actualItem_1.actualQuantity;",
+							"",
+							"// Сохраняем в локальную переменную",
+							"pm.variables.set(\"actualQuantity\", itemQuantity);",
+							"console.log(\"actualQuantity:\", itemQuantity);"
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				}
+			],
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "{{bearerToken}}",
+							"type": "string"
+						}
+					]
+				},
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "Accept",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"locationId\": \"{{location2_id}}\",\n  \"quantity\": {{actualQuantity}}\n}",
+					"options": {
+						"raw": {
+							"headerFamily": "json",
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{baseUrl}}/inventory/invoices/:invoiceId/items/:itemId/place",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"inventory",
+						"invoices",
+						":invoiceId",
+						"items",
+						":itemId",
+						"place"
+					],
+					"variable": [
+						{
+							"key": "invoiceId",
+							"value": "{{invoiceId}}",
+							"description": "(Required) ID накладной"
+						},
+						{
+							"key": "itemId",
+							"value": "{{itemId_1}}",
+							"description": "(Required) ID товара в накладной"
+						}
+					]
+				},
+				"description": "## 🧩 Place Item API — размещение товара на складе\n\nЭндпоинт `/inventory/invoices/:invoiceId/items/:itemId/place` размещает количество товара из накладной в указанной ячейке.\n\n### Request\n\n**Method**: `POST`  \n**URL**: `{{baseUrl}}/inventory/invoices/:invoiceId/items/:itemId/place`  \n**Headers**: `Authorization: Bearer {{bearerToken}}`, `Content-Type: application/json`\n\n### Параметры пути\n- **invoiceId** *(string, required)* — ID накладной.  \n- **itemId** *(string, required)* — ID позиции накладной.\n\n### Тело запроса\n- **locationBarcode** *(string, required)* — штрихкод ячейки, куда размещаем.  \n- **quantity** *(integer, required)* — количество к размещению, `> 0` и `<= (actualQuantity - placedQuantity)`.  \n- **placementCartId** *(string, optional)* — ID тележки, если размещение выполняется из тележки.\n\n**Пример**\n```json\n{\n  \"locationBarcode\": \"LOC-A01-01-01\",\n  \"quantity\": 3,\n  \"placementCartId\": \"60d21b4667d0d8992e610c86\"\n}\n```\n\n### Response\n\n**Status Code**: `200 OK`  \n**Content-Type**: `application/json`\n\n**Тело ответа** — обновлённая информация по позиции:\n- **id**, **sku**, **barcode**, **expectedQuantity**, **actualQuantity**, **placedQuantity** (увеличено),  \n  **status** *(например, `placed` если размещено всё)*, **lastPlacement** *(object)*:\n  - **locationBarcode** *(string)* — ячейка.  \n  - **quantity** *(integer)* — размещено сейчас.  \n  - **timestamp** *(string, ISO8601)* — время операции.\n\n**Пример**\n```json\n{\n  \"id\": \"item-001\",\n  \"sku\": \"PROD-001\",\n  \"barcode\": \"4607123456789\",\n  \"expectedQuantity\": 10,\n  \"actualQuantity\": 8,\n  \"placedQuantity\": 8,\n  \"status\": \"placed\",\n  \"lastPlacement\": {\n    \"locationBarcode\": \"LOC-A01-01-01\",\n    \"quantity\": 3,\n    \"timestamp\": \"2025-03-10T10:05:00Z\"\n  }\n}\n```\n\n### JSON Schema ответа\n```json\n{\n  \"type\": \"object\",\n  \"required\": [\"id\", \"sku\", \"barcode\", \"expectedQuantity\", \"actualQuantity\", \"placedQuantity\", \"status\"],\n  \"properties\": {\n    \"id\": { \"type\": \"string\" },\n    \"sku\": { \"type\": \"string\" },\n    \"barcode\": { \"type\": \"string\" },\n    \"expectedQuantity\": { \"type\": \"integer\" },\n    \"actualQuantity\": { \"type\": \"integer\" },\n    \"placedQuantity\": { \"type\": \"integer\" },\n    \"status\": { \"type\": \"string\", \"enum\": [\"pending\", \"scanned\", \"counted\", \"placed\"] },\n    \"lastPlacement\": {\n      \"type\": \"object\",\n      \"required\": [\"locationBarcode\", \"quantity\"],\n      \"properties\": {\n        \"locationBarcode\": { \"type\": \"string\" },\n        \"quantity\": { \"type\": \"integer\" },\n        \"timestamp\": { \"type\": \"string\" }\n      }\n    }\n  }\n}\n```\n\n### Ошибки\n- `400 Bad Request` — количество превышает доступное к размещению или некорректная ячейка.  \n- `404 Not Found` — накладная/позиция/ячейка не найдены.  \n- `409 Conflict` — ячейка переполнена или заблокирована.  \n- `500 Internal Server Error`."
+			},
+			"response": [
+				{
+					"name": "Товар успешно размещен",
+					"originalRequest": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer <token>",
+								"description": "Added as a part of security scheme: bearer"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"locationId\": \"60d21b4667d0d8992e610c85\",\n  \"quantity\": 10\n}",
+							"options": {
+								"raw": {
+									"headerFamily": "json",
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/inventory/invoices/:invoiceId/items/:itemId/place",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"inventory",
+								"invoices",
+								":invoiceId",
+								"items",
+								":itemId",
+								"place"
+							],
+							"variable": [
+								{
+									"key": "invoiceId"
+								},
+								{
+									"key": "itemId"
+								}
+							]
+						}
+					},
+					"status": "OK",
+					"code": 200,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"cookie": [],
+					"body": "{\n  \"inventory\": {\n    \"sku\": \"string\",\n    \"quantity\": 100.09521725678594,\n    \"locationId\": \"string\"\n  },\n  \"location\": {\n    \"_id\": \"60d21b4667d0d8992e610c85\",\n    \"barcode\": \"LOC-A01-01-01\",\n    \"zone\": \"A\",\n    \"aisle\": \"01\",\n    \"rack\": \"01\",\n    \"level\": \"01\",\n    \"position\": \"01\",\n    \"status\": \"available\",\n    \"capacity\": 100,\n    \"usedCapacity\": 30,\n    \"createdAt\": \"2025-03-01T10:00:00Z\"\n  }\n}"
+				},
+				{
+					"name": "Неверные данные запроса",
+					"originalRequest": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer <token>",
+								"description": "Added as a part of security scheme: bearer"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"locationId\": \"60d21b4667d0d8992e610c85\",\n  \"quantity\": 10\n}",
+							"options": {
+								"raw": {
+									"headerFamily": "json",
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/inventory/invoices/:invoiceId/items/:itemId/place",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"inventory",
+								"invoices",
+								":invoiceId",
+								"items",
+								":itemId",
+								"place"
+							],
+							"variable": [
+								{
+									"key": "invoiceId"
+								},
+								{
+									"key": "itemId"
+								}
+							]
+						}
+					},
+					"status": "Bad Request",
+					"code": 400,
+					"_postman_previewlanguage": "text",
+					"header": [],
+					"cookie": [],
+					"body": ""
+				},
+				{
+					"name": "Накладная, товар или ячейка не найдены",
+					"originalRequest": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer <token>",
+								"description": "Added as a part of security scheme: bearer"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"locationId\": \"60d21b4667d0d8992e610c85\",\n  \"quantity\": 10\n}",
+							"options": {
+								"raw": {
+									"headerFamily": "json",
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/inventory/invoices/:invoiceId/items/:itemId/place",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"inventory",
+								"invoices",
+								":invoiceId",
+								"items",
+								":itemId",
+								"place"
+							],
+							"variable": [
+								{
+									"key": "invoiceId"
+								},
+								{
+									"key": "itemId"
+								}
+							]
+						}
+					},
+					"status": "Not Found",
+					"code": 404,
+					"_postman_previewlanguage": "text",
+					"header": [],
+					"cookie": [],
+					"body": ""
+				},
+				{
+					"name": "Ошибка сервера",
+					"originalRequest": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer <token>",
+								"description": "Added as a part of security scheme: bearer"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"locationId\": \"60d21b4667d0d8992e610c85\",\n  \"quantity\": 10\n}",
+							"options": {
+								"raw": {
+									"headerFamily": "json",
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/inventory/invoices/:invoiceId/items/:itemId/place",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"inventory",
+								"invoices",
+								":invoiceId",
+								"items",
+								":itemId",
+								"place"
+							],
+							"variable": [
+								{
+									"key": "invoiceId"
+								},
+								{
+									"key": "itemId"
+								}
+							]
+						}
+					},
+					"status": "Internal Server Error",
+					"code": 500,
+					"_postman_previewlanguage": "text",
+					"header": [],
+					"cookie": [],
+					"body": ""
+				}
+			]
+		},
+		{
+			"name": "Получить тележку после размещения товара по ID",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"let response = pm.response.json();",
+							"",
+							"// Tests",
+							"// Test 1. Status code",
+							"pm.test(\"Status code is 200 or 201\", function() {",
+							"    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+							"});",
+							"",
+							"// Test 2. Status is occupied",
+							"pm.test(\"Status is occupied\", function () {",
+							"    pm.expect(response.status).to.eql(\"occupied\");",
+							"});",
+							"",
+							"// Логгируем статус тележки",
+							"console.log(`Статус тележки после размещения: ${response.status}`)"
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				}
+			],
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "{{bearerToken}}",
+							"type": "string"
+						}
+					]
+				},
+				"method": "GET",
+				"header": [
+					{
+						"key": "Accept",
+						"value": "application/json"
+					}
+				],
+				"url": {
+					"raw": "{{baseUrl}}/placement-carts/:id",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"placement-carts",
+						":id"
+					],
+					"variable": [
+						{
+							"key": "id",
+							"value": "{{cartId}}",
+							"description": "(Required) ID тележки размещения"
+						}
+					]
+				},
+				"description": "## 🛒 Placement Cart API — получить тележку по ID\n\nЭндпоинт `GET /placement-carts/:id` возвращает подробную информацию о тележке размещения.\n\n### Request\n\n**Method**: `GET`  \n**URL**: `{{baseUrl}}/placement-carts/:id`  \n**Headers**: `Authorization: Bearer {{bearerToken}}`, `Accept: application/json`\n\n### Параметры пути\n\n- **id** _(string, required)_ — идентификатор тележки.\n    \n\n### Response\n\n**Status Code**: `200 OK`  \n**Content-Type**: `application/json`\n\n**Тело ответа**\n\n- **_id** _(string)_ — ID тележки.\n    \n- **status** _(string)_ — `free` | `in_use` | `closed`.\n    \n- **items** _(array)_ — позиции, привязанные к тележке:\n    \n    - **invoiceId** _(string)_ — ID накладной.\n        \n    - **itemId** _(string)_ — ID позиции.\n        \n    - **sku** _(string)_ — артикул.\n        \n    - **quantity** _(integer)_ — ожидаемое.\n        \n    - **placedQuantity** _(integer)_ — уже размещено.\n        \n- **createdAt** _(string, ISO8601)_ — время создания.\n    \n\n**Пример**\n\n``` json\n{\n  \"_id\": \"60d21b4667d0d8992e610c85\",\n  \"status\": \"free\",\n  \"items\": [\n    {\n      \"invoiceId\": \"60d21b4667d0d8992e610c86\",\n      \"itemId\": \"item-001\",\n      \"sku\": \"PROD-001\",\n      \"quantity\": 10,\n      \"placedQuantity\": 5\n    }\n  ],\n  \"createdAt\": \"2025-03-10T10:00:00Z\"\n}\n\n ```\n\n### JSON Schema ответа\n\n``` json\n{\n  \"type\": \"object\",\n  \"required\": [\"_id\", \"status\", \"items\"],\n  \"properties\": {\n    \"_id\": { \"type\": \"string\" },\n    \"status\": { \"type\": \"string\", \"enum\": [\"free\", \"in_use\", \"closed\"] },\n    \"items\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"object\",\n        \"required\": [\"invoiceId\", \"itemId\", \"sku\", \"quantity\"],\n        \"properties\": {\n          \"invoiceId\": { \"type\": \"string\" },\n          \"itemId\": { \"type\": \"string\" },\n          \"sku\": { \"type\": \"string\" },\n          \"quantity\": { \"type\": \"integer\" },\n          \"placedQuantity\": { \"type\": \"integer\" }\n        }\n      }\n    },\n    \"createdAt\": { \"type\": \"string\" }\n  }\n}\n\n ```\n\n### Ошибки\n\n- `404 Not Found` — тележка не найдена.\n    \n- `500 Internal Server Error`."
+			},
+			"response": [
+				{
+					"name": "Успешное получение информации о тележке размещения",
+					"originalRequest": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer <token>",
+								"description": "Added as a part of security scheme: bearer"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/placement-carts/:id",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"placement-carts",
+								":id"
+							],
+							"variable": [
+								{
+									"key": "id"
+								}
+							]
+						}
+					},
+					"status": "OK",
+					"code": 200,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"cookie": [],
+					"body": "{\n  \"_id\": \"60d21b4667d0d8992e610c85\",\n  \"status\": \"free\",\n  \"items\": [\n    {\n      \"invoiceId\": \"60d21b4667d0d8992e610c86\",\n      \"itemId\": \"item-001\",\n      \"sku\": \"PROD-001\",\n      \"quantity\": 10,\n      \"placedQuantity\": 5\n    },\n    {\n      \"invoiceId\": \"60d21b4667d0d8992e610c86\",\n      \"itemId\": \"item-001\",\n      \"sku\": \"PROD-001\",\n      \"quantity\": 10,\n      \"placedQuantity\": 5\n    }\n  ],\n  \"createdAt\": \"2025-03-10T10:00:00Z\"\n}"
+				},
+				{
+					"name": "Тележка размещения не найдена",
+					"originalRequest": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer <token>",
+								"description": "Added as a part of security scheme: bearer"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/placement-carts/:id",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"placement-carts",
+								":id"
+							],
+							"variable": [
+								{
+									"key": "id"
+								}
+							]
+						}
+					},
+					"status": "Not Found",
+					"code": 404,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"cookie": [],
+					"body": "{\n  \"message\": \"Ошибка валидации данных\",\n  \"error\": \"Location not found\",\n  \"code\": \"VALIDATION_ERROR\"\n}"
+				},
+				{
+					"name": "Ошибка сервера",
+					"originalRequest": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer <token>",
+								"description": "Added as a part of security scheme: bearer"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/placement-carts/:id",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"placement-carts",
+								":id"
+							],
+							"variable": [
+								{
+									"key": "id"
+								}
+							]
+						}
+					},
+					"status": "Internal Server Error",
+					"code": 500,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"cookie": [],
+					"body": "{\n  \"message\": \"Ошибка валидации данных\",\n  \"error\": \"Location not found\",\n  \"code\": \"VALIDATION_ERROR\"\n}"
+				}
+			]
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"packages": {},
+				"requests": {},
+				"exec": [
+					""
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"packages": {},
+				"requests": {},
+				"exec": [
+					""
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "user_id",
+			"value": ""
+		},
+		{
+			"key": "bearerToken",
+			"value": ""
+		},
+		{
+			"key": "cartId",
+			"value": ""
+		},
+		{
+			"key": "invoiceNumber",
+			"value": ""
+		},
+		{
+			"key": "item_0",
+			"value": ""
+		},
+		{
+			"key": "itemId_0",
+			"value": ""
+		},
+		{
+			"key": "item_1",
+			"value": ""
+		},
+		{
+			"key": "itemId_1",
+			"value": ""
+		},
+		{
+			"key": "invoiceItems",
+			"value": ""
+		},
+		{
+			"key": "invoiceBarcode",
+			"value": ""
+		},
+		{
+			"key": "invoiceId",
+			"value": ""
+		},
+		{
+			"key": "newLocations",
+			"value": ""
+		},
+		{
+			"key": "location1_id",
+			"value": ""
+		},
+		{
+			"key": "location2_id",
+			"value": ""
+		},
+		{
+			"key": "actualItem_1",
+			"value": ""
+		},
+		{
+			"key": "actualItem_2",
+			"value": ""
+		}
+	]
+}
