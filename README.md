@@ -1,4 +1,4 @@
-# # API Tests with Newman
+# API Tests with Newman
 
 Этот проект содержит автоматические тесты Postman, которые выполняются с помощью [Newman](https://github.com/postmanlabs/newman) и GitHub Actions.  
 Результаты прогонов тестов публикуются как HTML-отчёты через **GitHub Pages**.
